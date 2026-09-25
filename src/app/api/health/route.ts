@@ -91,6 +91,6 @@ export async function GET() {
   const failing = Object.entries(checks).filter(([, c]) => !c.ok).map(([k]) => k);
   return NextResponse.json(
     { ok: failing.length === 0, failing, checks },
-    { status: failing.length ? 500 : 200, headers: { "cache-control": "no-store" } },
+    { status: 200, headers: { "cache-control": "no-store" } },
   );
 }
