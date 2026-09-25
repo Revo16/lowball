@@ -135,3 +135,25 @@ test("one DraftKings link for the whole parlay", () => {
   assert.equal(link, "https://sportsbook.draftkings.com/event/34118180?outcomes=0ML84695613_1+0HC84695700N450_3");
   assert.equal(dkParlayLink([null, "not a url"]), null);
 });
+
+import { canEditLeg } from "./legrules.ts";
+
+test("leg edit rules", () => {
+  const open = { viewerId: "a", isAdmin: false, locked: false, placed: false };
+  const own = { userId: "a", enteredBy: null };
+  const theirs = { userId: "b", enteredBy: null };
+  const enteredForB = { userId: "b", enteredBy: "c" };
+  const enteredForA = { userId: "a", enteredBy: "c" };
+  // Self-picked: only the owner, until lock.
+  assert.equal(canEditLeg(own, open), true);
+  assert.equal(canEditLeg(own, { ...open, locked: true }), false);
+  assert.equal(canEditLeg(theirs, open), false);
+  // Entered for someone: anyone, lock or not, until placed.
+  assert.equal(canEditLeg(enteredForB, open), true);
+  assert.equal(canEditLeg(enteredForB, { ...open, locked: true }), true);
+  assert.equal(canEditLeg(enteredForA, { ...open, locked: true }), true);
+  assert.equal(canEditLeg(enteredForB, { ...open, placed: true }), false);
+  // Admin can fix anything until placed.
+  assert.equal(canEditLeg(theirs, { ...open, isAdmin: true, locked: true }), true);
+  assert.equal(canEditLeg(theirs, { ...open, isAdmin: true, placed: true }), false);
+});

@@ -7,6 +7,7 @@ import { expectedPickers, stakeFor } from "./jobs";
 import { americanToDecimal, parlayOdds, payout } from "./math";
 import { gameOdds, propSlate, dkMarkets, currentPrice, MARKET_LABEL, type Market, type OddsWindow } from "./odds";
 import { venmoPayLink } from "./venmo";
+import { canEditLeg } from "./legrules";
 
 // Everything The Slip page shows, as plain JSON. The page renders it once on
 // the server and then re-fetches it every 30 seconds.
@@ -24,7 +25,16 @@ export type SlipLeg = {
   enteredBy: string | null;
 };
 
-export type SlipRow = { userId: string; teamName: string; username: string; avatar: string | null; isMe: boolean; leg: SlipLeg | null };
+export type SlipRow = {
+  userId: string;
+  teamName: string;
+  username: string;
+  avatar: string | null;
+  isMe: boolean;
+  leg: SlipLeg | null;
+  /** The viewer may change or remove this leg (lib/legrules). */
+  canEdit: boolean;
+};
 
 export type SlipData = {
   week: number;
@@ -152,7 +162,13 @@ export async function slipData(me: Member, all: Member[]): Promise<SlipData> {
   const people = [...pickers];
   for (const l of legs) if (!people.some((p) => p.userId === l.user_id) && byId.has(l.user_id)) people.push(byId.get(l.user_id)!);
   const rows: SlipRow[] = people
-    .map((m) => ({ userId: m.userId, teamName: m.teamName, username: m.username, avatar: avatarUrl(m.avatar), isMe: m.userId === me.userId, leg: legByUser.has(m.userId) ? toSlipLeg(legByUser.get(m.userId)!) : null }))
+    .map((m) => ({ userId: m.userId, teamName: m.teamName, username: m.username, avatar: avatarUrl(m.avatar), isMe: m.userId === me.userId,
+      leg: legByUser.has(m.userId) ? toSlipLeg(legByUser.get(m.userId)!) : null,
+      canEdit: legByUser.has(m.userId) && canEditLeg(
+        { userId: m.userId, enteredBy: legByUser.get(m.userId)!.entered_by },
+        { viewerId: me.userId, isAdmin: me.isAdmin, locked: now.locked, placed: frozen },
+      ),
+    }))
     .sort((a, b) => {
       if (!a.leg !== !b.leg) return a.leg ? -1 : 1;
       if (!a.leg || !b.leg) return a.isMe !== b.isMe ? (a.isMe ? -1 : 1) : a.teamName.localeCompare(b.teamName);

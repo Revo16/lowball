@@ -114,7 +114,7 @@ export function SearchView({ initial }: { initial: BoardData }) {
     }
     setLegs((prev) => [
       ...prev.filter((x) => x.userId !== target.userId),
-      { userId: target.userId, teamName: target.teamName, eventId: l.eventId, market: l.market, desc: l.desc || null, key: r.key ?? l.key, selection: l.label, price: l.price },
+      { userId: target.userId, teamName: target.teamName, eventId: l.eventId, market: l.market, desc: l.desc || null, key: r.key ?? l.key, selection: l.label, price: l.price, enteredBy: initial.forOther ? initial.meId : null },
     ]);
     setToast({ kind: "ok", text: r.ok ?? "On the slip" });
     // Picking for someone else: back to the Bookie tab for the next name.
@@ -227,7 +227,7 @@ export function SearchView({ initial }: { initial: BoardData }) {
         ) : (
           <span>
             {initial.forOther
-              ? `${target.teamName} already has a leg, or isn't in the pool.`
+              ? `${target.teamName} isn't in the pool, or picked their own leg (only they can change it).`
               : initial.locked
                 ? "Picks are locked for this week."
                 : "You're not picking this week (not in the pool, or funding this one)."}

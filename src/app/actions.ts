@@ -12,6 +12,7 @@ import { setSession, clearSession, pinMatches, requireMember, requireAdmin } fro
 import { gameOdds, eventProps, dkMarkets, selectionLabel, gameLabel, lineKey, conflictFor, MARKET_LABEL } from "@/lib/odds";
 import { recordLosers, expectedPickers, lockMessage } from "@/lib/jobs";
 import { notify } from "@/lib/notify";
+import { canEditLeg, editBlockedReason } from "@/lib/legrules";
 
 export type FormState = { error?: string; ok?: string };
 
@@ -49,24 +50,29 @@ export type PickResult = { error?: string; ok?: string; key?: string };
 type Target = { me: Member; userId: string; teamName: string };
 
 /**
- * Who can put a leg on the slip:
+ * Who can put a leg on the slip (see canEditLeg in lib/legrules for changes):
  *  - you, for yourself, until the lock;
  *  - anyone, for a pool member with no leg yet (texted-in picks), until it's placed;
- *  - the admin, for anyone, until it's placed.
+ *  - anyone, replacing a leg someone else entered for that person, until it's placed;
+ *  - nobody but the owner (and the admin) can touch a leg the owner picked himself.
  */
 async function assertCanPick(t: Target) {
   const now = await seasonNow();
   const parlay = await getParlay(now.season, now.week);
-  if (parlay && parlay.status !== "open") throw new Error("This week's parlay is already placed.");
+  const placed = !!parlay && parlay.status !== "open";
+  if (placed) throw new Error("This week's parlay is already placed.");
   const pickers = await expectedPickers(now.season, now.week);
   const forSelf = t.userId === t.me.userId;
   if (!t.me.isAdmin && !pickers.some((p) => p.userId === t.userId)) {
     throw new Error(forSelf ? "You're not in the pool this season." : `${t.teamName} isn't in the pool this season.`);
   }
-  if (forSelf && now.locked && !t.me.isAdmin) throw new Error("Picks are locked for this week.");
-  if (!forSelf && !t.me.isAdmin) {
-    const existing = (await getLegs(now.season, now.week)).find((l) => l.user_id === t.userId);
-    if (existing) throw new Error(`${t.teamName} already has a leg. Only they (before the lock) or the admin can change it.`);
+  const existing = (await getLegs(now.season, now.week)).find((l) => l.user_id === t.userId);
+  if (existing) {
+    const owner = { userId: existing.user_id, enteredBy: existing.entered_by };
+    const ctx = { viewerId: t.me.userId, isAdmin: t.me.isAdmin, locked: now.locked, placed };
+    if (!canEditLeg(owner, ctx)) throw new Error(editBlockedReason(owner, ctx, t.teamName));
+  } else if (forSelf && now.locked && !t.me.isAdmin) {
+    throw new Error("Picks are locked for this week.");
   }
   return now;
 }
@@ -126,7 +132,7 @@ async function tellOwner(t: Target, selection: string): Promise<string> {
   const now = await seasonNow();
   const r = await pushTo([t.userId], {
     title: `${t.me.teamName} entered your Week ${now.week} leg`,
-    body: `${selection}. ${now.locked ? "Picks are locked." : `Not right? Swap it in the app before ${formatPt(now.lock)}.`}`,
+    body: `${selection}. Not right? Change or remove it in the app. Pick it yourself and nobody else can touch it.`,
     url: "/",
     tag: `entered-${now.week}`,
   }).catch(() => null);
@@ -240,18 +246,33 @@ export async function removeLeg(forUser?: string | null): Promise<PickResult> {
     const now = await seasonNow();
     const parlay = await getParlay(now.season, now.week);
     const userId = forUser || me.userId;
-    if (parlay && parlay.status !== "open" && !me.isAdmin) return { error: "This week's parlay is already placed." };
-    if (userId !== me.userId && !me.isAdmin) return { error: "Only the admin can remove someone else's leg." };
-    if (now.locked && !me.isAdmin) return { error: "Picks are locked." };
+    const existing = (await getLegs(now.season, now.week)).find((l) => l.user_id === userId);
+    if (!existing) return { error: "There's no leg to remove." };
+    const all = await members();
+    const teamName = all.find((m) => m.userId === userId)?.teamName ?? "That player";
+    const owner = { userId, enteredBy: existing.entered_by };
+    const ctx = { viewerId: me.userId, isAdmin: me.isAdmin, locked: now.locked, placed: !!parlay && parlay.status !== "open" };
+    if (!canEditLeg(owner, ctx)) return { error: editBlockedReason(owner, ctx, teamName) };
     await db().from("legs").delete().match({ season: now.season, week: now.week, user_id: userId });
     refresh();
-    return { ok: "Removed from the slip" };
+    if (userId === me.userId) return { ok: "Removed from the slip" };
+    let told = "";
+    try {
+      const r = await pushTo([userId], {
+        title: `${me.teamName} removed your Week ${now.week} leg`,
+        body: `${existing.selection} is off the slip. Pick a new one in the app.`,
+        url: "/search",
+        tag: `leg-${now.week}`,
+      });
+      told = r.reached.length ? " They got a notification." : pushEnabled() ? " (Their notifications are off, so let them know.)" : "";
+    } catch {}
+    return { ok: `Removed ${teamName}'s leg.${told}` };
   } catch (err) {
     return { error: (err as Error).message };
   }
 }
 
-/** Form version for the Bookie tab (admin). */
+/** Form version for the Bookie tab. */
 export async function dropLeg(form: FormData) {
   await removeLeg(str(form, "userId"));
 }

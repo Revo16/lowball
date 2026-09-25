@@ -6,7 +6,7 @@ import { Countdown } from "@/components/client";
 import { StatusChip, PayChip } from "@/components/chrome";
 import { AppBar, Avatar, Hex, Num } from "@/components/ui";
 import { PushToggle } from "@/components/PushToggle";
-import { iPaid, signOut } from "@/app/actions";
+import { iPaid, signOut, removeLeg } from "@/app/actions";
 import type { SlipData, SlipLeg } from "@/lib/slip";
 import { americanToDecimal, formatAmerican } from "@/lib/math";
 import { formatPt } from "@/lib/weeks";
@@ -41,6 +41,8 @@ export function SlipView({ initial, pushKey }: { initial: SlipData; pushKey: str
   const [flash, setFlash] = useState<Record<string, "up" | "down" | "new">>({});
   const [paying, setPaying] = useState<number | null>(null);
   const prev = useRef(initial);
+  const [removing, setRemoving] = useState<string | null>(null);
+  const [legMsg, setLegMsg] = useState<{ userId: string; kind: "ok" | "error"; text: string } | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -69,6 +71,18 @@ export function SlipView({ initial, pushKey }: { initial: SlipData; pushKey: str
       /* offline for a moment; the next poll catches up */
     }
   }, []);
+
+  async function remove(row: SlipData["rows"][number]) {
+    if (!row.leg || removing) return;
+    const whose = row.isMe ? "your" : `${row.teamName}'s`;
+    if (!window.confirm(`Remove ${whose} leg (${row.leg.selection}) from the slip?`)) return;
+    setRemoving(row.userId);
+    const r = await removeLeg(row.isMe ? null : row.userId);
+    setRemoving(null);
+    setLegMsg({ userId: row.userId, kind: r.error ? "error" : "ok", text: r.error ?? r.ok ?? "Removed" });
+    setTimeout(() => setLegMsg(null), 4000);
+    await load();
+  }
 
   useEffect(() => {
     const tick = () => {
@@ -281,6 +295,17 @@ export function SlipView({ initial, pushKey }: { initial: SlipData; pushKey: str
                       <span className="pill pill-grey">By hand</span>
                     ) : null}
                   </div>
+                )}
+                {leg && row.canEdit && (
+                  <div className="leg-edit">
+                    <Link href={row.isMe ? "/search" : `/search?for=${row.userId}`} className="btn-link">Change</Link>
+                    <button type="button" className="btn-link" onClick={() => remove(row)} disabled={removing === row.userId}>
+                      {removing === row.userId ? "Removing…" : "Remove"}
+                    </button>
+                  </div>
+                )}
+                {legMsg?.userId === row.userId && (
+                  <p className={`leg-msg ${legMsg.kind === "error" ? "bad" : ""}`} role="status">{legMsg.text}</p>
                 )}
               </li>
             );

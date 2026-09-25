@@ -4,6 +4,7 @@ import { BottomNav } from "@/components/nav";
 import { AppBar, Avatar } from "@/components/ui";
 import { ActionForm, CopyButton, Submit } from "@/components/client";
 import { placeBet, nudge, pingChat, dropLeg } from "@/app/actions";
+import { canEditLeg } from "@/lib/legrules";
 import { requireMember } from "@/lib/session";
 import { seasonNow } from "@/lib/season";
 import { getParlay } from "@/lib/db";
@@ -118,6 +119,12 @@ export default async function BookiePage() {
                   <span className="build-side">
                     <span className="mono">{formatAmerican(l.price)}</span>
                     {l.dk_link ? <span className="pill pill-green">In link</span> : <span className="pill pill-amber">Add by hand</span>}
+                    {canEditLeg({ userId: l.user_id, enteredBy: l.entered_by }, { viewerId: me.userId, isAdmin: me.isAdmin, locked: now.locked, placed }) && (
+                      <form action={dropLeg}>
+                        <input type="hidden" name="userId" value={l.user_id} />
+                        <button className="btn-link small" type="submit">Remove</button>
+                      </form>
+                    )}
                   </span>
                 </li>
               ))}
@@ -163,20 +170,6 @@ export default async function BookiePage() {
             </ActionForm>
           )}
 
-          {me.isAdmin && legs.length > 0 && !placed && (
-            <details>
-              <summary className="small muted">Remove a leg</summary>
-              <div className="stack" style={{ paddingTop: 8 }}>
-                {legs.map((l) => (
-                  <form action={dropLeg} key={l.id} className="row" style={{ justifyContent: "space-between" }}>
-                    <input type="hidden" name="userId" value={l.user_id} />
-                    <span className="small">{byId.get(l.user_id)?.teamName}: {l.selection}</span>
-                    <button className="btn-link" type="submit">Remove</button>
-                  </form>
-                ))}
-              </div>
-            </details>
-          )}
         </section>
 
         {/* 3. Who hasn't picked, with texted-in picks */}
@@ -194,7 +187,7 @@ export default async function BookiePage() {
                 </div>
               ))}
             </div>
-            <p className="fine">Got a pick by text? Tap Enter for them. The leg shows who entered it.</p>
+            <p className="fine">Got a pick by text? Tap Enter for them. The leg shows who entered it, and anyone can change or remove it until it&apos;s placed.</p>
           </section>
         )}
 

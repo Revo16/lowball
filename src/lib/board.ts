@@ -4,6 +4,7 @@ import { seasonNow } from "./season";
 import { expectedPickers } from "./jobs";
 import { gameOdds, allProps, flatten, lineKey, oddsEnabled, propsSource, GAME_MARKETS, type BoardLine } from "./odds";
 import type { Member } from "./sleeper";
+import { canEditLeg } from "./legrules";
 
 // What Find a bet needs. Game lines come with the page; props load on demand
 // the first time someone searches, then everyone shares the cached copy.
@@ -18,6 +19,7 @@ export type BoardLeg = {
   key: string | null;
   selection: string;
   price: number | null;
+  enteredBy: string | null;
 };
 
 export type BoardData = {
@@ -52,13 +54,15 @@ export async function boardLegs(all: Member[]) {
     key: l.event_id ? lineKey(l.event_id, l.market, l.outcome_name ?? "", l.outcome_desc ?? "", l.point == null ? null : Number(l.point)) : null,
     selection: l.selection,
     price: l.price,
+    enteredBy: l.entered_by,
   }));
 }
 
 export async function boardData(me: Member, all: Member[], forUser?: string): Promise<BoardData> {
   const now = await seasonNow();
   // Anyone can enter a leg for a pool member who has none (the person placing
-  // it often collects picks by text). Only the admin can change an existing one.
+  // it often collects picks by text), or replace one someone else entered.
+  // A leg the owner picked himself is his (see lib/legrules).
   const target = forUser ? all.find((m) => m.userId === forUser) ?? me : me;
   const [legs, pickers] = await Promise.all([boardLegs(all), expectedPickers(now.season, now.week, all)]);
 
@@ -86,12 +90,13 @@ export async function boardData(me: Member, all: Member[], forUser?: string): Pr
   const parlay = await getParlay(now.season, now.week);
   const placed = !!parlay && parlay.status !== "open";
   const forOther = target.userId !== me.userId;
-  const targetHasLeg = picked.has(target.userId);
+  const targetLeg = legs.find((l) => l.userId === target.userId);
+  const ctx = { viewerId: me.userId, isAdmin: me.isAdmin, locked: now.locked, placed };
+  const canRemove = !!targetLeg && canEditLeg({ userId: targetLeg.userId, enteredBy: targetLeg.enteredBy }, ctx);
   const canPick =
     !placed &&
     (me.isAdmin ||
-      (forOther ? isPicker && !targetHasLeg : isPicker && !now.locked));
-  const canRemove = !placed && (me.isAdmin || (!forOther && isPicker && !now.locked));
+      (isPicker && (targetLeg ? canRemove : forOther || !now.locked)));
   return {
     week: now.week,
     lock: now.lock.toISOString(),
