@@ -3,8 +3,15 @@ import { StatusChip } from "@/components/chrome";
 import { BottomNav } from "@/components/nav";
 import { AppBar, Avatar } from "@/components/ui";
 import { ActionForm, CopyButton, Submit } from "@/components/client";
-import { placeBet, nudge, pingChat, dropLeg } from "@/app/actions";
+import { placeBet, nudge, pingChat } from "@/app/actions";
 import { canEditLeg } from "@/lib/legrules";
+import { LegDeck, type DeckLeg } from "@/components/LegDeck";
+
+const SLOT: Record<string, string> = {
+  spreads: "SPR", h2h: "ML", totals: "TOT", player_anytime_td: "TD",
+  player_pass_yds: "PASS", player_rush_yds: "RUSH", player_reception_yds: "REC", custom: "BET",
+};
+const shortGame = (game: string) => game.split(" @ ").map((t) => t.trim().split(" ").slice(-1)[0]).join(" @ ");
 import { requireMember } from "@/lib/session";
 import { seasonNow } from "@/lib/season";
 import { getParlay } from "@/lib/db";
@@ -46,6 +53,29 @@ export default async function BookiePage() {
   const parlayLink = dkParlayLink(inLink.map((l) => l.dk_link));
   const finalized = now.locked || (pickers.length > 0 && missing.length === 0);
   const canNudge = !placed && missing.length > 0;
+
+  // One card per leg. Swipe to remove only works on legs someone entered for
+  // a player; Change shows on any leg this viewer is allowed to change.
+  const ctx = { viewerId: me.userId, isAdmin: me.isAdmin, locked: now.locked, placed };
+  const deck: DeckLeg[] = legs.map((l) => {
+    const owner = byId.get(l.user_id);
+    const editable = canEditLeg({ userId: l.user_id, enteredBy: l.entered_by }, ctx);
+    const kickoff = l.commence_time ? formatPt(new Date(l.commence_time), { weekday: "short", hour: "numeric", minute: "2-digit" }) : null;
+    return {
+      userId: l.user_id,
+      teamName: owner?.teamName ?? "Someone",
+      avatar: owner ? avatarUrl(owner.avatar) : null,
+      slot: SLOT[l.market] ?? "BET",
+      selection: l.selection,
+      where: [l.market === "custom" ? l.game : shortGame(l.game), kickoff].filter(Boolean).join(" · "),
+      price: formatAmerican(l.price),
+      inLink: !!l.dk_link,
+      enteredBy: l.entered_by ? byId.get(l.entered_by)?.teamName ?? "someone" : null,
+      isMine: l.user_id === me.userId,
+      swipeable: !!l.entered_by && editable,
+      changeHref: editable ? (l.user_id === me.userId ? "/search" : `/search?for=${l.user_id}`) : null,
+    };
+  });
 
   return (
     <>
@@ -102,34 +132,7 @@ export default async function BookiePage() {
             </button>
           )}
 
-          {legs.length === 0 ? (
-            <p className="fine">No legs yet.</p>
-          ) : (
-            <ol className="build">
-              {legs.map((l, i) => (
-                <li key={l.id}>
-                  <span className="build-n">{i + 1}</span>
-                  <span className="build-main">
-                    <strong>{l.selection}</strong>
-                    <span className="small muted">
-                      {l.game} · {byId.get(l.user_id)?.teamName}
-                      {l.entered_by && <span className="entered"> · entered by {byId.get(l.entered_by)?.teamName ?? "someone"}</span>}
-                    </span>
-                  </span>
-                  <span className="build-side">
-                    <span className="mono">{formatAmerican(l.price)}</span>
-                    {l.dk_link ? <span className="pill pill-green">In link</span> : <span className="pill pill-amber">Add by hand</span>}
-                    {canEditLeg({ userId: l.user_id, enteredBy: l.entered_by }, { viewerId: me.userId, isAdmin: me.isAdmin, locked: now.locked, placed }) && (
-                      <form action={dropLeg}>
-                        <input type="hidden" name="userId" value={l.user_id} />
-                        <button className="btn-link small" type="submit">Remove</button>
-                      </form>
-                    )}
-                  </span>
-                </li>
-              ))}
-            </ol>
-          )}
+          {legs.length === 0 && <p className="fine">No legs yet.</p>}
           <p className="fine">
             Est. {formatAmerican(slip.combo.american)} · ${slip.stake} stake.{" "}
             {byHand.length > 0
@@ -172,6 +175,13 @@ export default async function BookiePage() {
 
         </section>
 
+        {deck.length > 0 && (
+          <>
+            <h2 className="section-label">Legs</h2>
+            <LegDeck legs={deck} />
+          </>
+        )}
+
         {/* 3. Who hasn't picked, with texted-in picks */}
         {missing.length > 0 && !placed && (
           <section className="card">
@@ -187,7 +197,7 @@ export default async function BookiePage() {
                 </div>
               ))}
             </div>
-            <p className="fine">Got a pick by text? Tap Enter for them. The leg shows who entered it, and anyone can change or remove it until it&apos;s placed.</p>
+            <p className="fine">Got a pick by text? Tap Enter for them. The leg shows who entered it, and anyone can change it or swipe it away until it&apos;s placed.</p>
           </section>
         )}
 

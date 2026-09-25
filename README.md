@@ -74,7 +74,7 @@ Each message is sent once per week even if a cron retries. To trigger one by han
 - Two people can't take the same market in the same game (both sides of a spread, say), since DraftKings won't take that parlay. Different markets in the same game are allowed with an SGP warning.
 - Ties for last: everyone tied owes, and the stake scales up.
 - Stat corrections or pool changes: anyone can re-pull a week's loser from the Bookie tab. Anyone who already paid stays on the books.
-- **A leg you pick yourself is yours:** only you can change or remove it, until the lock (the admin can still fix it). **A leg someone entered for you** (texted-in picks, via **Enter for them** on the Bookie tab) is tagged "Entered by …" and anyone can change or remove it until the parlay is placed; the owner gets a push either way. Once you re-pick it yourself, it's locked to you. Change and Remove sit under each leg on The Slip for whoever is allowed.
+- **A leg you pick yourself is yours:** only you can change or remove it (on Find a bet), until the lock; the admin can still fix it. **A leg someone entered for you** (texted-in picks, via **Enter for them**) is tagged "Entered by …" and anyone can change it or remove it until the parlay is placed; the owner gets a push either way. Re-pick it yourself and it's locked to you. On the Bookie tab every leg is its own card: legs entered for someone have a red edge and can be swiped left to remove (with Undo), legs a player picked himself show a lock, and **Change** shows on any leg you're allowed to change.
 
 ## Try it locally without any accounts
 

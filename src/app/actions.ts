@@ -2,7 +2,9 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { db, getLegs, getParlay, claimMessage } from "@/lib/db";
+import { createHmac, timingSafeEqual } from "node:crypto";
+import { config } from "@/lib/config";
+import { db, getLegs, getParlay, claimMessage, type Leg } from "@/lib/db";
 import { pushEnabled, pushTo } from "@/lib/push";
 import { formatPt } from "@/lib/weeks";
 import { setInPool } from "@/lib/pool";
@@ -45,7 +47,7 @@ export async function signOut() {
 
 /* ---------- picking ---------- */
 
-export type PickResult = { error?: string; ok?: string; key?: string };
+export type PickResult = { error?: string; ok?: string; key?: string; undo?: string };
 
 type Target = { me: Member; userId: string; teamName: string };
 
@@ -255,7 +257,8 @@ export async function removeLeg(forUser?: string | null): Promise<PickResult> {
     if (!canEditLeg(owner, ctx)) return { error: editBlockedReason(owner, ctx, teamName) };
     await db().from("legs").delete().match({ season: now.season, week: now.week, user_id: userId });
     refresh();
-    if (userId === me.userId) return { ok: "Removed from the slip" };
+    const undo = undoToken(existing);
+    if (userId === me.userId) return { ok: "Removed from the slip", undo };
     let told = "";
     try {
       const r = await pushTo([userId], {
@@ -266,15 +269,59 @@ export async function removeLeg(forUser?: string | null): Promise<PickResult> {
       });
       told = r.reached.length ? " They got a notification." : pushEnabled() ? " (Their notifications are off, so let them know.)" : "";
     } catch {}
-    return { ok: `Removed ${teamName}'s leg.${told}` };
+    return { ok: `Removed ${teamName}'s leg.${told}`, undo };
   } catch (err) {
     return { error: (err as Error).message };
   }
 }
 
-/** Form version for the Bookie tab. */
-export async function dropLeg(form: FormData) {
-  await removeLeg(str(form, "userId"));
+/* ---------- undo a remove ---------- */
+
+// Removing hands back a signed copy of the deleted row, so Undo can put
+// exactly that leg back without trusting anything else from the phone.
+function undoToken(leg: Leg) {
+  const body = Buffer.from(JSON.stringify({ leg, at: Date.now() })).toString("base64url");
+  return `${body}.${createHmac("sha256", config.sessionSecret).update(`undo:${body}`).digest("base64url")}`;
+}
+
+export async function restoreLeg(token: string): Promise<PickResult> {
+  try {
+    const { me } = await requireMember();
+    const [body, sig] = String(token).split(".");
+    const expected = createHmac("sha256", config.sessionSecret).update(`undo:${body}`).digest("base64url");
+    if (!body || !sig || sig.length !== expected.length || !timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) {
+      return { error: "Couldn't undo that." };
+    }
+    const { leg, at } = JSON.parse(Buffer.from(body, "base64url").toString()) as { leg: Leg; at: number };
+    if (Date.now() - at > 10 * 60_000) return { error: "Too late to undo. Enter the leg again instead." };
+    const now = await seasonNow();
+    if (leg.season !== now.season || leg.week !== now.week) return { error: "That week has moved on." };
+    const parlay = await getParlay(now.season, now.week);
+    if (parlay && parlay.status !== "open") return { error: "This week's parlay is already placed." };
+    const legs = await getLegs(now.season, now.week);
+    if (legs.some((l) => l.user_id === leg.user_id)) return { error: "That slot already has a new leg." };
+    const clash = conflictFor(
+      { eventId: leg.event_id, market: leg.market, desc: leg.outcome_desc },
+      legs.map((l) => ({ userId: l.user_id, eventId: l.event_id, market: l.market, desc: l.outcome_desc })),
+    );
+    if (clash) return { error: "Someone took a clashing line in that game since, so it can't go back." };
+    const { id: _id, ...row } = leg as Leg & Record<string, unknown>;
+    const res = await db().from("legs").insert(row);
+    if (res.error) return { error: `Couldn't put it back: ${res.error.message}` };
+    refresh();
+    if (leg.user_id !== me.userId) {
+      // Same tag as the "removed" push, so it replaces that notification.
+      await pushTo([leg.user_id], {
+        title: `Your Week ${now.week} leg is back`,
+        body: `${me.teamName} undid removing ${leg.selection}.`,
+        url: "/",
+        tag: `leg-${now.week}`,
+      }).catch(() => null);
+    }
+    return { ok: "Put back on the slip" };
+  } catch (err) {
+    return { error: (err as Error).message };
+  }
 }
 
 /* ---------- paying ---------- */
