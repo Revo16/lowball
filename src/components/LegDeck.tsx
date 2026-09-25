@@ -7,10 +7,10 @@ import { Avatar } from "@/components/ui";
 import { removeLeg, restoreLeg } from "@/app/actions";
 
 // The Bookie tab's legs, one card each, Gmail-style:
-//  - swipe left to remove (red edge on the right): legs someone entered for a
-//    player, or any leg for the admin. Undo puts it back.
-//  - swipe right to change (yellow edge on the left): any leg this viewer is
-//    allowed to change. Opens Find a bet picking for that player.
+//  - swipe right to change (yellow edge on the left), swipe left to remove
+//    (red edge on the right, with Undo). Both or neither: your own leg until
+//    the lock, legs someone entered for a player until it's placed, and every
+//    leg for the admin (lib/legrules).
 // A leg the player picked himself shows a lock; only he (or the admin) can touch it.
 
 export type DeckLeg = {
@@ -26,7 +26,7 @@ export type DeckLeg = {
   isMine: boolean;
   /** Swipe left to remove. */
   swipeable: boolean;
-  /** Swipe right (or tap Change) to change. */
+  /** Swipe right to change. */
   changeHref: string | null;
 };
 
@@ -249,8 +249,8 @@ function SwipeCard({ leg, onRemove, onChange, hint }: { leg: DeckLeg; onRemove: 
           <span className="dl-where">{leg.where}</span>
           {leg.inLink ? <span className="pill pill-green">In link</span> : <span className="pill pill-amber">Add by hand</span>}
           {leg.changeHref && (
-            <Link href={leg.changeHref} className="dl-change">
-              Change
+            <Link href={leg.changeHref} className="sr-only">
+              Change {leg.teamName}&apos;s leg
             </Link>
           )}
           {leg.swipeable && (

@@ -762,11 +762,6 @@ details.record-row > summary { cursor: pointer; }
   font-size: 12px; color: var(--muted);
 }
 .dl-where { flex: 1 1 auto; min-width: 0; }
-.dl-change {
-  background: var(--neon); color: var(--neon-ink); border-radius: 999px;
-  padding: 3px 12px; font-weight: 800; font-size: 12px; text-decoration: none; text-transform: uppercase; letter-spacing: 0.03em;
-}
-.dl-change:active { filter: brightness(0.92); }
 .snack {
   position: fixed; left: 50%; transform: translateX(-50%);
   bottom: calc(var(--tabbar) + env(safe-area-inset-bottom, 0px) + 12px);
