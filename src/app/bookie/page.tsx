@@ -1,0 +1,218 @@
+import Link from "next/link";
+import { StatusChip } from "@/components/chrome";
+import { BottomNav } from "@/components/nav";
+import { AppBar, Avatar } from "@/components/ui";
+import { ActionForm, CopyButton, Submit } from "@/components/client";
+import { placeBet, nudge, pingChat, dropLeg } from "@/app/actions";
+import { requireMember } from "@/lib/session";
+import { seasonNow } from "@/lib/season";
+import { getParlay } from "@/lib/db";
+import { expectedPickers, slipText } from "@/lib/jobs";
+import { config } from "@/lib/config";
+import { formatAmerican } from "@/lib/math";
+import { formatPt } from "@/lib/weeks";
+import { dkParlayLink, oddsStatus } from "@/lib/odds";
+import { avatarUrl } from "@/lib/sleeper";
+import { pushEnabled, subscribedUserIds } from "@/lib/push";
+
+export const dynamic = "force-dynamic";
+
+// This week only: who placed it, the slip to place, who's missing, Nudge.
+// Season stuff (record, players, payments) lives on the League tab.
+
+export default async function BookiePage() {
+  const { me, all } = await requireMember();
+  const now = await seasonNow();
+  const [slip, parlay, pickers, feed, notifyOn] = await Promise.all([
+    slipText(now.season, now.week),
+    getParlay(now.season, now.week),
+    expectedPickers(now.season, now.week, all),
+    oddsStatus().catch(() => null),
+    pushEnabled() ? subscribedUserIds().catch(() => new Set<string>()) : Promise.resolve(new Set<string>()),
+  ]);
+  const byId = new Map(all.map((m) => [m.userId, m]));
+  const admin = all.find((m) => m.isAdmin);
+  const picked = new Set(slip.legs.map((l) => l.user_id));
+  const missing = pickers.filter((p) => !picked.has(p.userId));
+  const status = parlay?.status ?? "open";
+  const placed = status !== "open";
+  const placer = parlay?.placed_by ? byId.get(parlay.placed_by) ?? null : null;
+
+  // The one-tap parlay: every leg that has a DraftKings outcome id.
+  const legs = [...slip.legs].sort((a, b) => (a.commence_time ?? "9").localeCompare(b.commence_time ?? "9"));
+  const inLink = legs.filter((l) => !!l.dk_link);
+  const byHand = legs.filter((l) => !l.dk_link);
+  const parlayLink = dkParlayLink(inLink.map((l) => l.dk_link));
+  const finalized = now.locked || (pickers.length > 0 && missing.length === 0);
+  const canNudge = !placed && missing.length > 0;
+
+  return (
+    <>
+      <AppBar />
+      <main className="wrap">
+        <div className="pill-row">
+          <span className="beige-pill">Bookie</span>
+          <span className="beige-pill">Week {now.week}</span>
+        </div>
+        <div className="hero-row">
+          <StatusChip status={placed ? status : now.locked ? "locked" : "open"} />
+          <span className="fine">
+            {now.locked ? `Locked ${formatPt(now.lock)}` : `Locks ${formatPt(now.lock)} PT`} · {slip.legs.length}/{pickers.length} legs
+          </span>
+        </div>
+
+        {/* 1. Who placed it */}
+        <section className="team-card" aria-label="This week's bookie">
+          <div className="team-head">
+            <span className="team-av">
+              <Avatar src={placer ? avatarUrl(placer.avatar) : null} name={placer?.teamName ?? "?"} size={64} />
+            </span>
+            <div>
+              <span className="team-kicker">Week {now.week} bookie</span>
+              <h2 className="team-name">{placer ? (placer.userId === me.userId ? "You" : placer.teamName) : "Not placed yet"}</h2>
+              <span className="team-meta">
+                {placer
+                  ? `Placed ${parlay?.placed_at ? formatPt(new Date(parlay.placed_at)) : ""}${parlay?.dk_odds ? ` at ${formatAmerican(parlay.dk_odds)}` : ""}`
+                  : "Anyone in a DraftKings state can place it. Whoever does is the bookie."}
+              </span>
+            </div>
+          </div>
+          <p className="team-foot">Losers pay @{config.payToVenmo}{admin ? ` (${admin.userId === me.userId ? "you" : admin.teamName})` : ""}.</p>
+        </section>
+
+        {/* 2. Slip to place (with "I placed it") */}
+        <section className="card">
+          <div className="card-head">
+            <h2 className="h-section">Slip to place</h2>
+            <CopyButton text={slip.text} />
+          </div>
+
+          {parlayLink && finalized && !placed ? (
+            <a className="btn btn-green btn-block" href={parlayLink} target="_blank" rel="noopener noreferrer">
+              Open parlay in DraftKings · {inLink.length} leg{inLink.length === 1 ? "" : "s"}
+            </a>
+          ) : (
+            <button type="button" className="btn btn-ghost btn-block" disabled>
+              {placed
+                ? `Placed by ${placer?.teamName ?? "someone"}${parlay?.dk_odds ? ` at ${formatAmerican(parlay.dk_odds)}` : ""}`
+                : !finalized
+                  ? `Opens when all ${pickers.length} legs are in or picks lock (${missing.length} to go)`
+                  : "No legs with a DraftKings link"}
+            </button>
+          )}
+
+          {legs.length === 0 ? (
+            <p className="fine">No legs yet.</p>
+          ) : (
+            <ol className="build">
+              {legs.map((l, i) => (
+                <li key={l.id}>
+                  <span className="build-n">{i + 1}</span>
+                  <span className="build-main">
+                    <strong>{l.selection}</strong>
+                    <span className="small muted">
+                      {l.game} · {byId.get(l.user_id)?.teamName}
+                      {l.entered_by && <span className="entered"> · entered by {byId.get(l.entered_by)?.teamName ?? "someone"}</span>}
+                    </span>
+                  </span>
+                  <span className="build-side">
+                    <span className="mono">{formatAmerican(l.price)}</span>
+                    {l.dk_link ? <span className="pill pill-green">In link</span> : <span className="pill pill-amber">Add by hand</span>}
+                  </span>
+                </li>
+              ))}
+            </ol>
+          )}
+          <p className="fine">
+            Est. {formatAmerican(slip.combo.american)} · ${slip.stake} stake.{" "}
+            {byHand.length > 0
+              ? `${byHand.length} leg${byHand.length === 1 ? "" : "s"} (player props or typed-in bets) can't go in the link: after it opens, search ${byHand.length === 1 ? "it" : "them"} in DraftKings and add to the same betslip. `
+              : ""}
+            Check the betslip shows {legs.length} legs before placing.
+          </p>
+
+          {!placed && legs.length > 0 && (
+            <details className="place-form">
+              <summary>
+                <span className="btn btn-ghost btn-block">I placed it</span>
+              </summary>
+              <ActionForm action={placeBet} className="stack">
+                <div className="row">
+                  <div className="field">
+                    <label htmlFor="dk_odds">Final odds</label>
+                    <input id="dk_odds" name="dk_odds" inputMode="numeric" placeholder={formatAmerican(slip.combo.american)} />
+                  </div>
+                  <div className="field">
+                    <label htmlFor="stake">Stake ($)</label>
+                    <input id="stake" name="stake" inputMode="decimal" defaultValue={slip.stake} />
+                  </div>
+                </div>
+                <div className="field">
+                  <label htmlFor="note">Note for the league (optional)</label>
+                  <input id="note" name="note" maxLength={200} placeholder="Swapped Chase TD for Chase 60+ yds, TD wasn't offered" />
+                </div>
+                <Submit className="btn btn-green">Confirm: I placed it</Submit>
+                <p className="fine">Only after DraftKings confirms the bet. You&apos;ll show up as this week&apos;s bookie.</p>
+              </ActionForm>
+            </details>
+          )}
+
+          {now.locked && !placed && (
+            <ActionForm action={pingChat} className="row">
+              <Submit className="btn-link">Post the final slip to the group chat</Submit>
+            </ActionForm>
+          )}
+
+          {me.isAdmin && legs.length > 0 && !placed && (
+            <details>
+              <summary className="small muted">Remove a leg</summary>
+              <div className="stack" style={{ paddingTop: 8 }}>
+                {legs.map((l) => (
+                  <form action={dropLeg} key={l.id} className="row" style={{ justifyContent: "space-between" }}>
+                    <input type="hidden" name="userId" value={l.user_id} />
+                    <span className="small">{byId.get(l.user_id)?.teamName}: {l.selection}</span>
+                    <button className="btn-link" type="submit">Remove</button>
+                  </form>
+                ))}
+              </div>
+            </details>
+          )}
+        </section>
+
+        {/* 3. Who hasn't picked, with texted-in picks */}
+        {missing.length > 0 && !placed && (
+          <section className="card">
+            <h2 className="h-section">No pick yet</h2>
+            <div className="bottom">
+              {missing.map((m) => (
+                <div className="bottom-row" key={m.userId}>
+                  <span>
+                    {m.teamName}
+                    {pushEnabled() && !notifyOn.has(m.userId) && <span className="fine"> · notifications off</span>}
+                  </span>
+                  <Link className="btn-link" href={`/search?for=${m.userId}`}>Enter for them</Link>
+                </div>
+              ))}
+            </div>
+            <p className="fine">Got a pick by text? Tap Enter for them. The leg shows who entered it.</p>
+          </section>
+        )}
+
+        {/* 4. Nudge */}
+        <ActionForm action={nudge} className="nudge-wrap">
+          <Submit className="btn btn-nudge" disabled={!canNudge}>Nudge</Submit>
+          <p className="fine center">
+            {placed
+              ? "The bet is in."
+              : missing.length
+                ? `Sends a notification to the ${missing.length} ${missing.length === 1 ? "person" : "people"} without a leg. Once every 30 minutes.`
+                : "Everyone's in."}
+          </p>
+        </ActionForm>
+
+        <p className="fine center">Game lines: ESPN (DraftKings lines, free). {feed?.text}</p>
+      </main>
+      <BottomNav current="bookie" />
+    </>
+  );
+}

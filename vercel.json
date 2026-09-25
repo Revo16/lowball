@@ -1,0 +1,8 @@
+{
+  "crons": [
+    { "path": "/api/cron/loser", "schedule": "0 17 * * 2" },
+    { "path": "/api/cron/remind?slot=fri", "schedule": "0 1 * * 6" },
+    { "path": "/api/cron/remind?slot=sat", "schedule": "0 19 * * 6" },
+    { "path": "/api/cron/lock", "schedule": "5 4 * * 0" }
+  ]
+}
