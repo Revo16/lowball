@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { normalizeSupabaseUrl } from "@/lib/config";
 
 export const dynamic = "force-dynamic";
 
@@ -36,10 +37,13 @@ export async function GET() {
 
   const url = process.env.SUPABASE_URL ?? "";
   if (url) {
-    const looksRight = /^https:\/\/[a-z0-9]+\.supabase\.co\/?$/.test(url.trim());
+    const used = normalizeSupabaseUrl(url);
+    const looksRight = /^https:\/\/[a-z0-9]+\.supabase\.co$/.test(used);
     checks["SUPABASE_URL format"] = {
       ok: looksRight,
-      detail: looksRight ? url.trim() : `"${url.trim().slice(0, 60)}" should look like https://abcd1234.supabase.co (no /rest/v1, no dashboard link)`,
+      detail: looksRight
+        ? used === url.trim() ? used : `using ${used} (cleaned up from what was pasted)`
+        : `"${url.trim().slice(0, 60)}" should look like https://abcd1234.supabase.co (not a dashboard link)`,
     };
   }
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
