@@ -54,8 +54,8 @@ export default async function BookiePage() {
   const finalized = now.locked || (pickers.length > 0 && missing.length === 0);
   const canNudge = !placed && missing.length > 0;
 
-  // One card per leg. Swipe to remove only works on legs someone entered for
-  // a player; Change shows on any leg this viewer is allowed to change.
+  // One card per leg. Swipe left to remove: legs someone entered for a player,
+  // or any leg for the admin. Swipe right / Change: any leg this viewer may change.
   const ctx = { viewerId: me.userId, isAdmin: me.isAdmin, locked: now.locked, placed };
   const deck: DeckLeg[] = legs.map((l) => {
     const owner = byId.get(l.user_id);
@@ -72,7 +72,7 @@ export default async function BookiePage() {
       inLink: !!l.dk_link,
       enteredBy: l.entered_by ? byId.get(l.entered_by)?.teamName ?? "someone" : null,
       isMine: l.user_id === me.userId,
-      swipeable: !!l.entered_by && editable,
+      swipeable: (!!l.entered_by || me.isAdmin) && editable,
       changeHref: editable ? (l.user_id === me.userId ? "/search" : `/search?for=${l.user_id}`) : null,
     };
   });
@@ -178,7 +178,7 @@ export default async function BookiePage() {
         {deck.length > 0 && (
           <>
             <h2 className="section-label">Legs</h2>
-            <LegDeck legs={deck} />
+            <LegDeck legs={deck} isAdmin={me.isAdmin} />
           </>
         )}
 

@@ -19,6 +19,8 @@
   --red: #e0373d;
   --amber: #d98a0b;
   --gold: #f2b01e;
+  --neon: #e4ff1a;     /* change */
+  --neon-ink: #2a3000;
   --focus: #1b6fd1;
   --tab-cut: #ffffff;
   --radius: 6px;
@@ -708,40 +710,46 @@ details.record-row > summary { cursor: pointer; }
 .for-cancel { color: #fff; font-weight: 700; font-size: 13px; text-transform: uppercase; letter-spacing: 0.06em; text-decoration: none; padding: 6px 10px; border-radius: 5px; background: rgb(255 255 255 / 0.16); }
 
 
-/* ---------- Bookie: one card per leg, swipe left to remove ---------- */
+/* ---------- Bookie: one card per leg, swipe right to change, left to remove ---------- */
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
-.deck-legend { margin: 0 2px 8px; font-size: 12px; color: var(--muted); line-height: 1.5; }
-.deck-legend-swipe { display: inline-block; width: 4px; height: 12px; border-radius: 2px; background: var(--red); vertical-align: -1px; margin-right: 2px; }
+.deck-legend { list-style: none; margin: 0 2px 8px; padding: 0; display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; color: var(--muted); line-height: 1.5; }
+.deck-legend li { display: inline-flex; align-items: center; gap: 5px; }
+.edge { display: inline-block; width: 5px; height: 13px; border-radius: 2px; }
+.edge-remove { background: var(--red); }
+.edge-change { background: var(--neon); box-shadow: 0 0 0 1px var(--neon-ink) inset; }
 .lock-ic { vertical-align: -1px; }
 .deck { list-style: none; margin: 0 0 12px; padding: 0; display: grid; gap: 8px; }
 .swipe {
   position: relative;
   overflow: hidden;
   border-radius: var(--radius);
-  background: var(--red);
+  background: var(--card);
   box-shadow: var(--shadow);
   max-height: 200px;
   transition: max-height 0.22s ease 0.12s, opacity 0.2s ease 0.12s, margin 0.22s ease 0.12s;
 }
-.swipe:not(.can-swipe) { background: var(--card); }
 .swipe.leaving { max-height: 0; opacity: 0; margin-bottom: -8px; }
 .swipe-bg {
   position: absolute; inset: 0;
-  display: flex; align-items: center; justify-content: flex-end; gap: 6px;
-  padding-right: 20px;
-  color: #fff; font-weight: 700; font-size: 14px; text-transform: uppercase; letter-spacing: 0.04em;
+  display: flex; align-items: center; gap: 6px;
+  font-weight: 800; font-size: 14px; text-transform: uppercase; letter-spacing: 0.04em;
 }
+.swipe-bg-remove { background: var(--red); color: #fff; justify-content: flex-end; padding-right: 20px; }
+.swipe-bg-change { background: var(--neon); color: var(--neon-ink); justify-content: flex-start; padding-left: 20px; }
 .swipe-front {
   position: relative;
   background: var(--card);
-  padding: 10px 12px 8px;
+  padding: 10px 14px 8px;
   touch-action: pan-y;
   user-select: none;
   -webkit-user-select: none;
 }
 .swipe-front.anim { transition: transform 0.22s ease; }
-/* The affordance: a red edge on legs you can swipe. */
-.can-swipe .swipe-front { box-shadow: inset -4px 0 0 var(--red); cursor: grab; }
+/* The affordance: yellow edge on the left = swipe right to change; red edge on the right = swipe left to remove. */
+.can-remove .swipe-front { box-shadow: inset -5px 0 0 var(--red); }
+.can-change .swipe-front { box-shadow: inset 5px 0 0 var(--neon); }
+.can-change.can-remove .swipe-front { box-shadow: inset 5px 0 0 var(--neon), inset -5px 0 0 var(--red); }
+.can-change .swipe-front, .can-remove .swipe-front { cursor: grab; }
 .dl-row { display: grid; grid-template-columns: 44px 38px minmax(0, 1fr) auto; gap: 10px; align-items: center; }
 .dl-main { display: grid; min-width: 0; }
 .dl-main strong { font-size: 16px; line-height: 1.2; overflow-wrap: anywhere; }
@@ -755,10 +763,10 @@ details.record-row > summary { cursor: pointer; }
 }
 .dl-where { flex: 1 1 auto; min-width: 0; }
 .dl-change {
-  border: 1px solid var(--teal-2); color: var(--teal-2); border-radius: 999px;
-  padding: 2px 12px; font-weight: 700; font-size: 12px; text-decoration: none; text-transform: uppercase; letter-spacing: 0.03em;
+  background: var(--neon); color: var(--neon-ink); border-radius: 999px;
+  padding: 3px 12px; font-weight: 800; font-size: 12px; text-decoration: none; text-transform: uppercase; letter-spacing: 0.03em;
 }
-.dl-change:active { background: var(--teal-2); color: #fff; }
+.dl-change:active { filter: brightness(0.92); }
 .snack {
   position: fixed; left: 50%; transform: translateX(-50%);
   bottom: calc(var(--tabbar) + env(safe-area-inset-bottom, 0px) + 12px);
@@ -769,5 +777,5 @@ details.record-row > summary { cursor: pointer; }
   box-shadow: 0 6px 20px rgb(0 0 0 / 0.22);
 }
 .snack-bad { background: var(--red); }
-.snack-undo { background: none; border: 0; color: #7fd6f0; font: inherit; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; padding: 4px 6px; cursor: pointer; }
+.snack-undo { background: none; border: 0; color: var(--neon); font: inherit; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; padding: 4px 6px; cursor: pointer; }
 @media (prefers-reduced-motion: reduce) { .swipe, .swipe-front.anim { transition: none; } }

@@ -6,9 +6,12 @@ import { useEffect, useRef, useState, type PointerEvent as RPointerEvent } from 
 import { Avatar } from "@/components/ui";
 import { removeLeg, restoreLeg } from "@/app/actions";
 
-// The Bookie tab's legs, one card each. A leg someone entered for another
-// player can be swiped left to remove it (with Undo, like Gmail). A leg the
-// player picked himself shows a lock and can't be swiped.
+// The Bookie tab's legs, one card each, Gmail-style:
+//  - swipe left to remove (red edge on the right): legs someone entered for a
+//    player, or any leg for the admin. Undo puts it back.
+//  - swipe right to change (yellow edge on the left): any leg this viewer is
+//    allowed to change. Opens Find a bet picking for that player.
+// A leg the player picked himself shows a lock; only he (or the admin) can touch it.
 
 export type DeckLeg = {
   userId: string;
@@ -21,13 +24,15 @@ export type DeckLeg = {
   inLink: boolean;
   enteredBy: string | null;
   isMine: boolean;
+  /** Swipe left to remove. */
   swipeable: boolean;
+  /** Swipe right (or tap Change) to change. */
   changeHref: string | null;
 };
 
 const HINT_KEY = "lowball.swipe-hint";
 
-export function LegDeck({ legs }: { legs: DeckLeg[] }) {
+export function LegDeck({ legs, isAdmin }: { legs: DeckLeg[]; isAdmin: boolean }) {
   const router = useRouter();
   const [gone, setGone] = useState<Set<string>>(new Set());
   const [snack, setSnack] = useState<{ text: string; undo?: string; userId?: string; error?: boolean } | null>(null);
@@ -36,7 +41,7 @@ export function LegDeck({ legs }: { legs: DeckLeg[] }) {
 
   // Show once per phone how swiping works: the first swipeable card peeks left.
   useEffect(() => {
-    const first = legs.find((l) => l.swipeable);
+    const first = legs.find((l) => l.swipeable || l.changeHref);
     if (!first) return;
     let seen = false;
     try {
@@ -88,19 +93,34 @@ export function LegDeck({ legs }: { legs: DeckLeg[] }) {
   }
 
   const visible = legs.filter((l) => !gone.has(l.userId));
-  const anySwipe = visible.some((l) => l.swipeable);
+  const anyRemove = visible.some((l) => l.swipeable);
+  const anyChange = visible.some((l) => l.changeHref);
+  const anyLocked = visible.some((l) => !l.enteredBy);
 
   return (
     <>
-      {anySwipe && (
-        <p className="deck-legend">
-          <span className="deck-legend-swipe" aria-hidden="true" /> Swipe left to remove a leg someone entered for a player.{" "}
-          <LockIcon /> Own pick: only that player can change it.
-        </p>
+      {(anyRemove || anyChange) && (
+        <ul className="deck-legend">
+          {anyChange && (
+            <li>
+              <span className="edge edge-change" aria-hidden="true" /> Swipe right to change
+            </li>
+          )}
+          {anyRemove && (
+            <li>
+              <span className="edge edge-remove" aria-hidden="true" /> Swipe left to remove
+            </li>
+          )}
+          {anyLocked && (
+            <li>
+              <LockIcon /> Own pick: {isAdmin ? "only the player (and you, as admin) can touch it" : "only that player can change it"}
+            </li>
+          )}
+        </ul>
       )}
       <ul className="deck">
         {visible.map((l) => (
-          <SwipeCard key={l.userId} leg={l} onRemove={() => remove(l)} hint={hintFor === l.userId} />
+          <SwipeCard key={l.userId} leg={l} onRemove={() => remove(l)} onChange={() => l.changeHref && router.push(l.changeHref)} hint={hintFor === l.userId} />
         ))}
       </ul>
       {snack && (
@@ -117,7 +137,9 @@ export function LegDeck({ legs }: { legs: DeckLeg[] }) {
   );
 }
 
-function SwipeCard({ leg, onRemove, hint }: { leg: DeckLeg; onRemove: () => void; hint: boolean }) {
+function SwipeCard({ leg, onRemove, onChange, hint }: { leg: DeckLeg; onRemove: () => void; onChange: () => void; hint: boolean }) {
+  const canLeft = leg.swipeable;
+  const canRight = !!leg.changeHref;
   const front = useRef<HTMLDivElement>(null);
   const drag = useRef<{ x: number; y: number; t: number; dx: number; horizontal: boolean | null; id: number } | null>(null);
   const [dx, setDx] = useState(0);
@@ -126,14 +148,14 @@ function SwipeCard({ leg, onRemove, hint }: { leg: DeckLeg; onRemove: () => void
 
   useEffect(() => {
     if (!hint) return;
-    setAnimating(true);
-    setDx(-64);
-    const t = setTimeout(() => setDx(0), 650);
-    return () => clearTimeout(t);
-  }, [hint]);
+    // Peek each way this card can go, so the edges make sense.
+    const steps = [...(canRight ? [56, 0] : []), ...(canLeft ? [-56, 0] : [])];
+    const timers = steps.map((x, i) => setTimeout(() => { setAnimating(true); setDx(x); }, i * 520));
+    return () => timers.forEach(clearTimeout);
+  }, [hint, canLeft, canRight]);
 
   function down(e: RPointerEvent<HTMLDivElement>) {
-    if (!leg.swipeable || leaving) return;
+    if ((!canLeft && !canRight) || leaving) return;
     if ((e.target as HTMLElement).closest("a,button")) return;
     drag.current = { x: e.clientX, y: e.clientY, t: performance.now(), dx: 0, horizontal: null, id: e.pointerId };
     setAnimating(false);
@@ -153,7 +175,7 @@ function SwipeCard({ leg, onRemove, hint }: { leg: DeckLeg; onRemove: () => void
       }
       front.current?.setPointerCapture(e.pointerId);
     }
-    d.dx = Math.min(0, mx);
+    d.dx = Math.max(canLeft ? -Infinity : 0, Math.min(canRight ? Infinity : 0, mx));
     setDx(d.dx);
   }
 
@@ -162,23 +184,33 @@ function SwipeCard({ leg, onRemove, hint }: { leg: DeckLeg; onRemove: () => void
     drag.current = null;
     if (!d || !d.horizontal) return;
     const width = front.current?.offsetWidth ?? 320;
-    const speed = -d.dx / Math.max(1, performance.now() - d.t); // px per ms
+    const speed = Math.abs(d.dx) / Math.max(1, performance.now() - d.t); // px per ms
+    const far = Math.abs(d.dx) > width * 0.35 || (Math.abs(d.dx) > 50 && speed > 0.6);
     setAnimating(true);
-    if (d.dx < -width * 0.35 || (d.dx < -50 && speed > 0.6)) {
+    if (far && d.dx < 0 && canLeft) {
       setDx(-width - 20);
       setLeaving(true);
       setTimeout(onRemove, 220);
+    } else if (far && d.dx > 0 && canRight) {
+      setDx(width * 0.4);
+      setTimeout(onChange, 160);
     } else {
       setDx(0);
     }
   }
 
-  const reveal = Math.min(1, -dx / 90);
+  const reveal = Math.min(1, Math.abs(dx) / 90);
 
   return (
-    <li className={`swipe ${leaving ? "leaving" : ""} ${leg.swipeable ? "can-swipe" : ""}`}>
-      {leg.swipeable && (
-        <div className="swipe-bg" aria-hidden="true" style={{ opacity: reveal }}>
+    <li className={`swipe ${leaving ? "leaving" : ""} ${canLeft ? "can-remove" : ""} ${canRight ? "can-change" : ""} ${dx > 0 ? "going-right" : ""}`}>
+      {canRight && dx > 0 && (
+        <div className="swipe-bg swipe-bg-change" aria-hidden="true" style={{ opacity: reveal }}>
+          <PencilIcon />
+          <span>Change</span>
+        </div>
+      )}
+      {canLeft && dx < 0 && (
+        <div className="swipe-bg swipe-bg-remove" aria-hidden="true" style={{ opacity: reveal }}>
           <TrashIcon />
           <span>Remove</span>
         </div>
@@ -237,6 +269,14 @@ function LockIcon() {
     <svg className="lock-ic" viewBox="0 0 16 16" width="11" height="11" aria-hidden="true">
       <rect x="3" y="7" width="10" height="8" rx="1.5" fill="currentColor" />
       <path d="M5 7V5a3 3 0 0 1 6 0v2" fill="none" stroke="currentColor" strokeWidth="1.8" />
+    </svg>
+  );
+}
+
+function PencilIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+      <path d="M4 17.5V20h2.5L17.1 9.4l-2.5-2.5L4 17.5Zm15.7-10.2a1 1 0 0 0 0-1.4l-1.6-1.6a1 1 0 0 0-1.4 0l-1.3 1.3 2.5 2.5 1.8-1.8Z" fill="currentColor" />
     </svg>
   );
 }
