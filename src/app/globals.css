@@ -784,16 +784,16 @@ details.record-row > summary { cursor: pointer; }
 .swipe.is-empty .swipe-front { background: var(--card-2); }
 .swipe.is-empty .dl-main strong { color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; font-size: 15px; }
 .add-circle {
-  display: inline-grid; place-items: center;
+  display: grid; place-items: center;
   width: 38px; height: 38px; border-radius: 50%;
-  background: var(--neon); color: var(--neon-ink);
-  font-size: 24px; font-weight: 800; line-height: 1; text-decoration: none;
-  box-shadow: 0 0 0 1px rgb(42 48 0 / 0.15) inset;
+  margin-right: 2px;
+  background: var(--teal-2); color: #fff;
+  box-shadow: 0 2px 0 var(--teal-deep);
+  text-decoration: none;
 }
-.add-circle:active { filter: brightness(0.92); }
+.add-circle:active { transform: translateY(1px); box-shadow: 0 1px 0 var(--teal-deep); }
 .add-dot {
   display: inline-grid; place-items: center; width: 14px; height: 14px; border-radius: 50%;
-  background: var(--neon); color: var(--neon-ink); font-size: 12px; font-weight: 800; line-height: 1;
+  background: var(--teal-2); color: #fff;
 }
-.add-dot-lg { width: 22px; height: 22px; font-size: 18px; }
 .dl-dash { color: #b9bcc1; padding-right: 10px; }

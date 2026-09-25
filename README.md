@@ -75,7 +75,7 @@ Each message is sent once per week even if a cron retries. To trigger one by han
 - Ties for last: everyone tied owes, and the stake scales up.
 - Stat corrections or pool changes: anyone can re-pull a week's loser from the Bookie tab. Anyone who already paid stays on the books.
 - **A leg you pick yourself is yours:** only you can change or remove it, until the lock; the admin can still fix it. **A leg someone entered for you** (texted-in picks) is tagged "Entered by …" and anyone can change or remove it until the parlay is placed; the owner gets a push either way. Re-pick it yourself and it's locked to you.
-- **Bookie tab cards:** every slot is a card. Empty slots have a yellow **+** (or swipe right) to add a pick for that player. Filled cards swipe right to change (yellow edge) and left to remove (red edge, with Undo), both or neither: your own leg until the lock, any leg entered for someone until it's placed, every leg for the admin. Other players' own picks show a lock.
+- **Bookie tab cards:** every slot is a card. Empty slots have a blue **+** button to add a pick for that player (they don't swipe). Filled cards swipe right to change (yellow edge) and left to remove (red edge, with Undo), both or neither: your own leg until the lock, any leg entered for someone until it's placed, every leg for the admin. Other players' own picks show a lock.
 - **Find a bet is always you.** Picking for someone else only starts from their Bookie card, and shows a yellow "Picking for …" bar; ✕ takes you back to your own leg.
 
 ## Try it locally without any accounts

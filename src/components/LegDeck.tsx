@@ -12,8 +12,8 @@ import { removeLeg, restoreLeg } from "@/app/actions";
 //    the lock, legs someone entered for a player until it's placed, and every
 //    leg for the admin (lib/legrules).
 // A leg the player picked himself shows a lock; only he (or the admin) can touch it.
-// A pool member with no leg yet gets an empty card: tap + (or swipe right) to
-// add a pick for them, for texted-in picks.
+// A pool member with no leg yet gets an empty card with a + button to add a
+// pick for them (texted-in picks). Empty cards don't swipe.
 
 export type DeckLeg = {
   userId: string;
@@ -28,7 +28,7 @@ export type DeckLeg = {
   isMine: boolean;
   /** Swipe left to remove. */
   swipeable: boolean;
-  /** Swipe right to change (or, on an empty card, tap + / swipe right to add). */
+  /** Swipe right to change; on an empty card, where the + button goes. */
   changeHref: string | null;
   /** No leg yet: an empty slot. */
   empty: boolean;
@@ -111,7 +111,7 @@ export function LegDeck({ legs, isAdmin }: { legs: DeckLeg[]; isAdmin: boolean }
         <ul className="deck-legend">
           {anyAdd && (
             <li>
-              <span className="add-dot" aria-hidden="true">+</span> Add a pick for someone
+              <span className="add-dot" aria-hidden="true"><PlusIcon size={8} /></span> Tap to add a pick for someone
             </li>
           )}
           {anyChange && (
@@ -151,8 +151,9 @@ export function LegDeck({ legs, isAdmin }: { legs: DeckLeg[]; isAdmin: boolean }
 }
 
 function SwipeCard({ leg, onRemove, onChange, hint }: { leg: DeckLeg; onRemove: () => void; onChange: () => void; hint: boolean }) {
-  const canLeft = leg.swipeable;
-  const canRight = !!leg.changeHref;
+  // Empty cards don't swipe: the + button is the only way in.
+  const canLeft = !leg.empty && leg.swipeable;
+  const canRight = !leg.empty && !!leg.changeHref;
   const front = useRef<HTMLDivElement>(null);
   const drag = useRef<{ x: number; y: number; t: number; dx: number; horizontal: boolean | null; id: number } | null>(null);
   const [dx, setDx] = useState(0);
@@ -218,8 +219,8 @@ function SwipeCard({ leg, onRemove, onChange, hint }: { leg: DeckLeg; onRemove: 
     <li className={`swipe ${leg.empty ? "is-empty" : ""} ${leaving ? "leaving" : ""} ${canLeft ? "can-remove" : ""} ${canRight ? "can-change" : ""} ${dx > 0 ? "going-right" : ""}`}>
       {canRight && dx > 0 && (
         <div className="swipe-bg swipe-bg-change" aria-hidden="true" style={{ opacity: reveal }}>
-          {leg.empty ? <span className="add-dot add-dot-lg">+</span> : <PencilIcon />}
-          <span>{leg.empty ? "Add" : "Change"}</span>
+          <PencilIcon />
+          <span>Change</span>
         </div>
       )}
       {canLeft && dx < 0 && (
@@ -252,7 +253,7 @@ function SwipeCard({ leg, onRemove, onChange, hint }: { leg: DeckLeg; onRemove: 
             </div>
             {leg.changeHref ? (
               <Link href={leg.changeHref} className="add-circle" aria-label={`Add a pick for ${leg.isMine ? "yourself" : leg.teamName}`}>
-                +
+                <PlusIcon size={18} />
               </Link>
             ) : (
               <b className="dl-dash">—</b>
@@ -306,6 +307,15 @@ function LockIcon() {
     <svg className="lock-ic" viewBox="0 0 16 16" width="11" height="11" aria-hidden="true">
       <rect x="3" y="7" width="10" height="8" rx="1.5" fill="currentColor" />
       <path d="M5 7V5a3 3 0 0 1 6 0v2" fill="none" stroke="currentColor" strokeWidth="1.8" />
+    </svg>
+  );
+}
+
+// Drawn, not typed, so it sits dead centre in the circle whatever the font.
+function PlusIcon({ size }: { size: number }) {
+  return (
+    <svg viewBox="0 0 18 18" width={size} height={size} aria-hidden="true" style={{ display: "block" }}>
+      <path d="M9 2v14M2 9h14" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" />
     </svg>
   );
 }
