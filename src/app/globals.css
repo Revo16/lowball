@@ -692,20 +692,28 @@ details.record-row > summary { cursor: pointer; }
 .place-form > summary { list-style: none; cursor: pointer; }
 .place-form > summary::-webkit-details-marker { display: none; }
 
-/* picking for someone else */
+/* picking for someone else: same yellow as swipe-right-to-change */
 .for-banner {
+  position: sticky;
+  top: calc(env(safe-area-inset-top, 0px) + 64px);
+  z-index: 5;
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: 12px;
-  padding: 12px 14px;
+  padding: 10px 10px 10px 14px;
   border-radius: var(--radius);
-  background: var(--teal-deep);
-  color: #fff;
+  background: var(--neon);
+  color: var(--neon-ink);
   font-size: 15px;
-  box-shadow: var(--shadow);
+  box-shadow: 0 4px 14px rgb(0 0 0 / 0.14);
 }
-.for-cancel { color: #fff; font-weight: 700; font-size: 13px; text-transform: uppercase; letter-spacing: 0.06em; text-decoration: none; padding: 6px 10px; border-radius: 5px; background: rgb(255 255 255 / 0.16); }
+.for-cancel {
+  display: inline-grid; place-items: center; width: 32px; height: 32px; border-radius: 50%;
+  color: var(--neon-ink); background: rgb(42 48 0 / 0.12);
+  font-weight: 800; font-size: 15px; line-height: 1; text-decoration: none;
+}
+.for-cancel:active { background: rgb(42 48 0 / 0.22); }
 
 
 /* ---------- Bookie: one card per leg, swipe right to change, left to remove ---------- */
@@ -772,3 +780,20 @@ details.record-row > summary { cursor: pointer; }
 .snack-bad { background: var(--red); }
 .snack-undo { background: none; border: 0; color: var(--neon); font: inherit; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; padding: 4px 6px; cursor: pointer; }
 @media (prefers-reduced-motion: reduce) { .swipe, .swipe-front.anim { transition: none; } }
+/* Empty slots on the Bookie tab: tap + (or swipe right) to add a pick */
+.swipe.is-empty .swipe-front { background: var(--card-2); }
+.swipe.is-empty .dl-main strong { color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; font-size: 15px; }
+.add-circle {
+  display: inline-grid; place-items: center;
+  width: 38px; height: 38px; border-radius: 50%;
+  background: var(--neon); color: var(--neon-ink);
+  font-size: 24px; font-weight: 800; line-height: 1; text-decoration: none;
+  box-shadow: 0 0 0 1px rgb(42 48 0 / 0.15) inset;
+}
+.add-circle:active { filter: brightness(0.92); }
+.add-dot {
+  display: inline-grid; place-items: center; width: 14px; height: 14px; border-radius: 50%;
+  background: var(--neon); color: var(--neon-ink); font-size: 12px; font-weight: 800; line-height: 1;
+}
+.add-dot-lg { width: 22px; height: 22px; font-size: 18px; }
+.dl-dash { color: #b9bcc1; padding-right: 10px; }

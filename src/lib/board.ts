@@ -32,7 +32,6 @@ export type BoardData = {
   canRemove: boolean;
   meId: string;
   target: { userId: string; teamName: string };
-  people: Array<{ userId: string; teamName: string; picked: boolean }>;
   games: BoardGame[];
   legs: BoardLeg[];
   oddsEnabled: boolean;
@@ -107,7 +106,6 @@ export async function boardData(me: Member, all: Member[], forUser?: string): Pr
     canRemove,
     meId: me.userId,
     target: { userId: target.userId, teamName: target.teamName },
-    people: me.isAdmin ? all.map((m) => ({ userId: m.userId, teamName: m.teamName, picked: picked.has(m.userId) })) : [],
     games,
     legs,
     oddsEnabled: oddsEnabled(),

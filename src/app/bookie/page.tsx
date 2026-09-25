@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { StatusChip } from "@/components/chrome";
 import { BottomNav } from "@/components/nav";
 import { AppBar, Avatar } from "@/components/ui";
@@ -25,7 +24,8 @@ import { pushEnabled, subscribedUserIds } from "@/lib/push";
 
 export const dynamic = "force-dynamic";
 
-// This week only: who placed it, the slip to place, who's missing, Nudge.
+// This week only: who placed it, the slip to place, every slot as a card
+// (empty ones to fill in texted-in picks), Nudge.
 // Season stuff (record, players, payments) lives on the League tab.
 
 export default async function BookiePage() {
@@ -75,8 +75,35 @@ export default async function BookiePage() {
       isMine: l.user_id === me.userId,
       swipeable: editable,
       changeHref: editable ? (l.user_id === me.userId ? "/search" : `/search?for=${l.user_id}`) : null,
+      empty: false,
+      notifyOff: false,
     };
   });
+  // Empty slots last, yours first. Anyone can add a pick for someone else until
+  // it's placed (texted-in picks); your own slot follows the lock.
+  const empties: DeckLeg[] = [...missing]
+    .sort((a, b) => Number(b.userId === me.userId) - Number(a.userId === me.userId) || a.teamName.localeCompare(b.teamName))
+    .map((m) => {
+      const mine = m.userId === me.userId;
+      const canAdd = !placed && (mine ? !now.locked || me.isAdmin : true);
+      return {
+        userId: m.userId,
+        teamName: m.teamName,
+        avatar: avatarUrl(m.avatar),
+        slot: "—",
+        selection: "",
+        where: "",
+        price: "",
+        inLink: false,
+        enteredBy: null,
+        isMine: mine,
+        swipeable: false,
+        changeHref: canAdd ? (mine ? "/search" : `/search?for=${m.userId}`) : null,
+        empty: true,
+        notifyOff: pushEnabled() && !notifyOn.has(m.userId),
+      };
+    });
+  deck.push(...empties);
 
   return (
     <>
@@ -178,31 +205,13 @@ export default async function BookiePage() {
 
         {deck.length > 0 && (
           <>
-            <h2 className="section-label">Legs</h2>
+            <h2 className="section-label">Legs · {legs.length}/{pickers.length}</h2>
             <LegDeck legs={deck} isAdmin={me.isAdmin} />
           </>
         )}
 
         {/* 3. Who hasn't picked, with texted-in picks */}
-        {missing.length > 0 && !placed && (
-          <section className="card">
-            <h2 className="h-section">No pick yet</h2>
-            <div className="bottom">
-              {missing.map((m) => (
-                <div className="bottom-row" key={m.userId}>
-                  <span>
-                    {m.teamName}
-                    {pushEnabled() && !notifyOn.has(m.userId) && <span className="fine"> · notifications off</span>}
-                  </span>
-                  <Link className="btn-link" href={`/search?for=${m.userId}`}>Enter for them</Link>
-                </div>
-              ))}
-            </div>
-            <p className="fine">Got a pick by text? Tap Enter for them. The leg shows who entered it, and anyone can change it or swipe it away until it&apos;s placed.</p>
-          </section>
-        )}
-
-        {/* 4. Nudge */}
+        {/* 3. Nudge */}
         <ActionForm action={nudge} className="nudge-wrap">
           <Submit className="btn btn-nudge" disabled={!canNudge}>Nudge</Submit>
           <p className="fine center">

@@ -185,24 +185,9 @@ export function SearchView({ initial }: { initial: BoardData }) {
           <span>
             Picking for <b>{target.teamName}</b>
           </span>
-          <a href="/bookie" className="for-cancel">Cancel</a>
-        </div>
-      )}
-
-      {initial.isAdmin && (
-        <div className="field">
-          <label htmlFor="for">Picking for</label>
-          <select
-            id="for"
-            value={target.userId}
-            onChange={(e) => (window.location.href = `/search?for=${encodeURIComponent(e.target.value)}`)}
-          >
-            {initial.people.map((p) => (
-              <option key={p.userId} value={p.userId}>
-                {p.teamName}{p.picked ? " ✓" : ""}
-              </option>
-            ))}
-          </select>
+          <a href="/search" className="for-cancel" aria-label={`Stop picking for ${target.teamName}, back to your own leg`}>
+            ✕
+          </a>
         </div>
       )}
 

@@ -12,6 +12,8 @@ import { removeLeg, restoreLeg } from "@/app/actions";
 //    the lock, legs someone entered for a player until it's placed, and every
 //    leg for the admin (lib/legrules).
 // A leg the player picked himself shows a lock; only he (or the admin) can touch it.
+// A pool member with no leg yet gets an empty card: tap + (or swipe right) to
+// add a pick for them, for texted-in picks.
 
 export type DeckLeg = {
   userId: string;
@@ -26,8 +28,11 @@ export type DeckLeg = {
   isMine: boolean;
   /** Swipe left to remove. */
   swipeable: boolean;
-  /** Swipe right to change. */
+  /** Swipe right to change (or, on an empty card, tap + / swipe right to add). */
   changeHref: string | null;
+  /** No leg yet: an empty slot. */
+  empty: boolean;
+  notifyOff: boolean;
 };
 
 const HINT_KEY = "lowball.swipe-hint";
@@ -41,7 +46,7 @@ export function LegDeck({ legs, isAdmin }: { legs: DeckLeg[]; isAdmin: boolean }
 
   // Show once per phone how swiping works: the first swipeable card peeks left.
   useEffect(() => {
-    const first = legs.find((l) => l.swipeable || l.changeHref);
+    const first = legs.find((l) => !l.empty && (l.swipeable || l.changeHref));
     if (!first) return;
     let seen = false;
     try {
@@ -92,15 +97,23 @@ export function LegDeck({ legs, isAdmin }: { legs: DeckLeg[]; isAdmin: boolean }
     router.refresh();
   }
 
-  const visible = legs.filter((l) => !gone.has(l.userId));
-  const anyRemove = visible.some((l) => l.swipeable);
-  const anyChange = visible.some((l) => l.changeHref);
-  const anyLocked = visible.some((l) => !l.enteredBy);
+  // A removed leg disappears right away; its empty card arrives with the refresh.
+  const visible = legs.filter((l) => l.empty || !gone.has(l.userId));
+  const filled = visible.filter((l) => !l.empty);
+  const anyRemove = filled.some((l) => l.swipeable);
+  const anyChange = filled.some((l) => l.changeHref);
+  const anyLocked = filled.some((l) => !l.enteredBy);
+  const anyAdd = visible.some((l) => l.empty && l.changeHref);
 
   return (
     <>
-      {(anyRemove || anyChange) && (
+      {(anyRemove || anyChange || anyAdd) && (
         <ul className="deck-legend">
+          {anyAdd && (
+            <li>
+              <span className="add-dot" aria-hidden="true">+</span> Add a pick for someone
+            </li>
+          )}
           {anyChange && (
             <li>
               <span className="edge edge-change" aria-hidden="true" /> Swipe right to change
@@ -120,7 +133,7 @@ export function LegDeck({ legs, isAdmin }: { legs: DeckLeg[]; isAdmin: boolean }
       )}
       <ul className="deck">
         {visible.map((l) => (
-          <SwipeCard key={l.userId} leg={l} onRemove={() => remove(l)} onChange={() => l.changeHref && router.push(l.changeHref)} hint={hintFor === l.userId} />
+          <SwipeCard key={`${l.userId}${l.empty ? ":empty" : ""}`} leg={l} onRemove={() => remove(l)} onChange={() => l.changeHref && router.push(l.changeHref)} hint={hintFor === l.userId} />
         ))}
       </ul>
       {snack && (
@@ -202,11 +215,11 @@ function SwipeCard({ leg, onRemove, onChange, hint }: { leg: DeckLeg; onRemove: 
   const reveal = Math.min(1, Math.abs(dx) / 90);
 
   return (
-    <li className={`swipe ${leaving ? "leaving" : ""} ${canLeft ? "can-remove" : ""} ${canRight ? "can-change" : ""} ${dx > 0 ? "going-right" : ""}`}>
+    <li className={`swipe ${leg.empty ? "is-empty" : ""} ${leaving ? "leaving" : ""} ${canLeft ? "can-remove" : ""} ${canRight ? "can-change" : ""} ${dx > 0 ? "going-right" : ""}`}>
       {canRight && dx > 0 && (
         <div className="swipe-bg swipe-bg-change" aria-hidden="true" style={{ opacity: reveal }}>
-          <PencilIcon />
-          <span>Change</span>
+          {leg.empty ? <span className="add-dot add-dot-lg">+</span> : <PencilIcon />}
+          <span>{leg.empty ? "Add" : "Change"}</span>
         </div>
       )}
       {canLeft && dx < 0 && (
@@ -225,40 +238,64 @@ function SwipeCard({ leg, onRemove, onChange, hint }: { leg: DeckLeg; onRemove: 
         onPointerCancel={up}
         onTransitionEnd={() => setAnimating(false)}
       >
-        <div className="dl-row">
-          <span className="slot">{leg.slot}</span>
-          <Avatar src={leg.avatar} name={leg.teamName} size={38} />
-          <div className="dl-main">
-            <strong>{leg.selection}</strong>
-            <span className="dl-who">
-              {leg.teamName}
-              {leg.isMine && " (you)"}
-              {leg.enteredBy ? (
-                <span className="entered"> · Entered by {leg.enteredBy}</span>
-              ) : (
-                <span className="dl-own">
-                  {" "}
-                  · <LockIcon /> Own pick
-                </span>
-              )}
-            </span>
+        {leg.empty ? (
+          <div className="dl-row">
+            <span className="slot">—</span>
+            <Avatar src={leg.avatar} name={leg.teamName} size={38} />
+            <div className="dl-main">
+              <strong className="empty-sel">Empty</strong>
+              <span className="dl-who">
+                {leg.teamName}
+                {leg.isMine && " (you)"}
+                {leg.notifyOff && " · notifications off"}
+              </span>
+            </div>
+            {leg.changeHref ? (
+              <Link href={leg.changeHref} className="add-circle" aria-label={`Add a pick for ${leg.isMine ? "yourself" : leg.teamName}`}>
+                +
+              </Link>
+            ) : (
+              <b className="dl-dash">—</b>
+            )}
           </div>
-          <b className="dl-price mono">{leg.price}</b>
-        </div>
-        <div className="dl-foot">
-          <span className="dl-where">{leg.where}</span>
-          {leg.inLink ? <span className="pill pill-green">In link</span> : <span className="pill pill-amber">Add by hand</span>}
-          {leg.changeHref && (
-            <Link href={leg.changeHref} className="sr-only">
-              Change {leg.teamName}&apos;s leg
-            </Link>
-          )}
-          {leg.swipeable && (
-            <button type="button" className="sr-only" onClick={onRemove}>
-              Remove {leg.teamName}&apos;s leg
-            </button>
-          )}
-        </div>
+        ) : (
+          <>
+          <div className="dl-row">
+            <span className="slot">{leg.slot}</span>
+            <Avatar src={leg.avatar} name={leg.teamName} size={38} />
+            <div className="dl-main">
+              <strong>{leg.selection}</strong>
+              <span className="dl-who">
+                {leg.teamName}
+                {leg.isMine && " (you)"}
+                {leg.enteredBy ? (
+                  <span className="entered"> · Entered by {leg.enteredBy}</span>
+                ) : (
+                  <span className="dl-own">
+                    {" "}
+                    · <LockIcon /> Own pick
+                  </span>
+                )}
+              </span>
+            </div>
+            <b className="dl-price mono">{leg.price}</b>
+          </div>
+          <div className="dl-foot">
+            <span className="dl-where">{leg.where}</span>
+            {leg.inLink ? <span className="pill pill-green">In link</span> : <span className="pill pill-amber">Add by hand</span>}
+            {leg.changeHref && (
+              <Link href={leg.changeHref} className="sr-only">
+                Change {leg.teamName}&apos;s leg
+              </Link>
+            )}
+            {leg.swipeable && (
+              <button type="button" className="sr-only" onClick={onRemove}>
+                Remove {leg.teamName}&apos;s leg
+              </button>
+            )}
+          </div>
+          </>
+        )}
       </div>
     </li>
   );
