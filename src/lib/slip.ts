@@ -53,8 +53,6 @@ export type SlipData = {
   } | null;
   myDebts: Array<{ week: number; points: number; tied: boolean; venmoUrl: string | null }>;
   liveLast: { teamName: string; points: number } | null;
-  history: Array<{ week: number; teamName: string; points: number; state: "owes" | "says-paid" | "paid" }>;
-  record: { won: number; lost: number };
   winnings: {
     payout: number | null;      // what DraftKings pays back if it hits (stake included)
     perPerson: number | null;
@@ -235,16 +233,11 @@ export async function slipData(me: Member, all: Member[]): Promise<SlipData> {
       : null,
     myDebts,
     liveLast: bottom[0] && bottom[0].points > 0 ? { teamName: bottom[0].member.teamName, points: bottom[0].points } : null,
-    history: losers.map((l) => ({ week: l.week, teamName: byId.get(l.user_id)?.teamName ?? "?", points: Number(l.points), state: payState(l) })),
     winnings: {
       payout: weekPayout != null ? round2(weekPayout) : null,
       perPerson: weekPayout != null ? round2(weekPayout / split) : null,
       split,
       season: { total: round2(seasonTotal), perPerson: round2(seasonEach), hits: hits.length },
-    },
-    record: {
-      won: parlays.filter((p) => p.status === "won").length,
-      lost: parlays.filter((p) => p.status === "lost").length,
     },
     payTo: { venmo: config.payToVenmo, teamName: admin?.teamName ?? null },
     placedBy: parlay?.placed_by ? byId.get(parlay.placed_by)?.teamName ?? null : null,

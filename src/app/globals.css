@@ -296,9 +296,7 @@ sup { font-size: 0.5em; vertical-align: 0.72em; margin-left: 1px; font-weight: 7
 .live-last .num { margin-left: auto; font-size: 18px; color: var(--red); }
 
 /* ---------- season ---------- */
-.season { background: var(--card); border-radius: var(--radius); padding: 12px 14px; box-shadow: var(--shadow); }
-.season summary, .custom summary { cursor: pointer; font-weight: 700; }
-.season[open] summary { margin-bottom: 8px; }
+.custom summary { cursor: pointer; font-weight: 700; }
 .table-wrap { overflow-x: auto; }
 table { width: 100%; border-collapse: collapse; font-size: 14px; }
 th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--line); vertical-align: middle; }

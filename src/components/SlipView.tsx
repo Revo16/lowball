@@ -344,36 +344,6 @@ export function SlipView({ initial, pushKey }: { initial: SlipData; pushKey: str
           </div>
         )}
 
-        {data.history.length > 0 && (
-          <details className="season">
-            <summary>
-              Season so far <span className="muted">· {data.record.won}–{data.record.lost} on parlays</span>
-            </summary>
-            <div className="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Wk</th>
-                    <th>Last place</th>
-                    <th className="num-col">Pts</th>
-                    <th></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.history.map((h) => (
-                    <tr key={`${h.week}-${h.teamName}`}>
-                      <td>{h.week}</td>
-                      <td>{h.teamName}</td>
-                      <td className="num-col">{h.points.toFixed(2)}</td>
-                      <td><PayChip state={h.state} amount={data.amount} /></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </details>
-        )}
-
         <footer className="foot">
           <form action={signOut}>
             <span>Signed in as {data.me.teamName} · </span>
