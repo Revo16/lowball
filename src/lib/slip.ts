@@ -8,6 +8,7 @@ import { expectedPickers, stakeFor } from "./jobs";
 import { americanToDecimal, parlayOdds, payout } from "./math";
 import { gameOdds, propSlate, dkMarkets, currentPrice, isPropMarket, MARKET_LABEL, type Market, type OddsWindow } from "./odds";
 import { venmoPayLink } from "./venmo";
+import { venmos } from "./venmos";
 import { canEditLeg, cutoffFor, isEarly } from "./legrules";
 
 // Everything The Slip page shows, as plain JSON. The page renders it once on
@@ -54,8 +55,18 @@ export type SlipData = {
     week: number;
     points: number;
     people: Array<{ userId: string; teamName: string; username: string; avatar: string | null; state: "owes" | "says-paid" | "paid" }>;
+    /** Who they pay: whoever placed the parlay their $5 funds. Null until it's placed. */
+    bookie: string | null;
   } | null;
-  myDebts: Array<{ week: number; points: number; tied: boolean; venmoUrl: string | null }>;
+  myDebts: Array<{
+    week: number;
+    points: number;
+    tied: boolean;
+    /** The week they fund (week + 1) and who placed it. Null bookie = not placed yet. */
+    funds: number;
+    bookie: { teamName: string; venmo: string | null } | null;
+    venmoUrl: string | null;
+  }>;
   liveLast: { teamName: string; points: number } | null;
   winnings: {
     payout: number | null;      // what DraftKings pays back if it hits (stake included)
@@ -63,7 +74,8 @@ export type SlipData = {
     split: number;              // people on the slip
     season: { total: number; perPerson: number; hits: number };
   };
-  payTo: { venmo: string; teamName: string | null };
+  /** The admin, for "ask them to add you". */
+  payTo: { teamName: string | null };
   placedBy: string | null;
   amount: number;
   parlayNote: string | null;
@@ -203,15 +215,27 @@ export async function slipData(me: Member, all: Member[]): Promise<SlipData> {
     seasonTotal += paid;
     seasonEach += paid / people;
   }
-  // Every loser pays the same Venmo (the admin's). The admin, if they lose, just marks it.
+  // A loser's $5 funds the next week's parlay, so they pay whoever placed it
+  // (that week's bookie). Until someone places it there's nobody to pay yet.
+  const handles = await venmos(admin?.userId).catch(() => new Map<string, string>());
+  const bookieOf = (loserWeek: number) => {
+    const p = parlays.find((x) => x.week === loserWeek + 1 && x.status !== "open" && x.placed_by);
+    return p?.placed_by ?? null;
+  };
   const myDebts: SlipData["myDebts"] = losers
-    .filter((x) => x.user_id === me.userId && !x.paid && !x.confirmed)
-    .map((l) => ({
-      week: l.week,
-      points: Number(l.points),
-      tied: l.tied,
-      venmoUrl: me.isAdmin ? null : venmoPayLink({ to: config.payToVenmo, amount: config.loserAmount, note: `Lowball Week ${l.week} 🧻` }),
-    }));
+    .filter((x) => x.user_id === me.userId && !x.paid && !x.confirmed && bookieOf(x.week) !== me.userId)
+    .map((l) => {
+      const bookieId = bookieOf(l.week);
+      const venmo = bookieId ? handles.get(bookieId) ?? null : null;
+      return {
+        week: l.week,
+        points: Number(l.points),
+        tied: l.tied,
+        funds: l.week + 1,
+        bookie: bookieId ? { teamName: byId.get(bookieId)?.teamName ?? "The bookie", venmo } : null,
+        venmoUrl: venmo ? venmoPayLink({ to: venmo, amount: config.loserAmount, note: `Lowball Week ${l.week + 1} parlay 🧻` }) : null,
+      };
+    });
   return {
     week: now.week,
     season: now.season,
@@ -235,6 +259,10 @@ export async function slipData(me: Member, all: Member[]): Promise<SlipData> {
           week: now.week - 1,
           points: Number(funding[0].points),
           people: funding.map((f) => ({ userId: f.user_id, teamName: byId.get(f.user_id)?.teamName ?? "?", username: byId.get(f.user_id)?.username ?? "", avatar: avatarUrl(byId.get(f.user_id)?.avatar ?? null), state: payState(f) })),
+          bookie: (() => {
+            const id = bookieOf(now.week - 1);
+            return id ? byId.get(id)?.teamName ?? null : null;
+          })(),
         }
       : null,
     myDebts,
@@ -245,7 +273,7 @@ export async function slipData(me: Member, all: Member[]): Promise<SlipData> {
       split,
       season: { total: round2(seasonTotal), perPerson: round2(seasonEach), hits: hits.length },
     },
-    payTo: { venmo: config.payToVenmo, teamName: admin?.teamName ?? null },
+    payTo: { teamName: admin?.teamName ?? null },
     placedBy: parlay?.placed_by ? byId.get(parlay.placed_by)?.teamName ?? null : null,
     amount: config.loserAmount,
     parlayNote: parlay?.note ?? null,

@@ -14,8 +14,8 @@ export const config = {
   get leagueId() { return required("SLEEPER_LEAGUE_ID"); },
   /** Runs the league in the app: manages the pool, confirms payments, pays back whoever places the bet. */
   get adminUsername() { return (process.env.ADMIN_SLEEPER_USERNAME ?? "").trim().toLowerCase(); },
-  /** Where every loser sends their $5. */
-  get payToVenmo() { return required("PAY_TO_VENMO").trim().replace(/^@/, ""); },
+  /** The admin's own Venmo (seeds theirs; losers now pay the week's bookie). */
+  get payToVenmo() { return (process.env.PAY_TO_VENMO ?? "").trim().replace(/^@/, ""); },
   get loserAmount() { return Number(process.env.LOSER_AMOUNT ?? 5); },
   get loserPicks() { return (process.env.LOSER_PICKS ?? "true") === "true"; },
   get leaguePin() { return required("LEAGUE_PIN"); },

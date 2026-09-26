@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { AvatarImg } from "@/components/AvatarImg";
 
 /** Teal top bar with a home button and the league name. */
 export function AppBar({ title = "No Shoes Nation" }: { title?: string }) {
@@ -40,12 +41,7 @@ export function Avatar({ src, name, size = 40 }: { src: string | null; name: str
     .join("");
   return (
     <span className="avatar" style={{ width: size, height: size }}>
-      {src ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img src={src} alt="" width={size} height={size} loading="lazy" />
-      ) : (
-        <span style={{ fontSize: size * 0.38 }}>{initials || "?"}</span>
-      )}
+      <AvatarImg src={src} initials={initials || "?"} size={size} />
     </span>
   );
 }

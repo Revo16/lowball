@@ -157,12 +157,18 @@ export function SlipView({ initial, pushKey }: { initial: SlipData; pushKey: str
                 <span className="team-meta"><Num value={d.points} /> pts · {d.tied ? "tied for last" : "lowest score"}</span>
               </div>
             </div>
-            {d.venmoUrl ? (
+            {!d.bookie ? (
+              <p className="team-foot">
+                ${data.amount} goes to whoever places the Week {d.funds} parlay. Your Pay button shows up here as soon as someone does.
+              </p>
+            ) : (
               <>
-                <div className="team-actions">
-                  <a className="btn btn-green" href={d.venmoUrl} target="_blank" rel="noopener noreferrer">
-                    Pay ${data.amount} on Venmo
-                  </a>
+                <div className={`team-actions ${d.venmoUrl ? "" : "one"}`}>
+                  {d.venmoUrl && (
+                    <a className="btn btn-green" href={d.venmoUrl} target="_blank" rel="noopener noreferrer">
+                      Pay ${data.amount} on Venmo
+                    </a>
+                  )}
                   <button
                     type="button"
                     className="btn btn-glass"
@@ -177,26 +183,11 @@ export function SlipView({ initial, pushKey }: { initial: SlipData; pushKey: str
                     {paying === d.week ? "Saving…" : "I paid"}
                   </button>
                 </div>
-                <p className="team-foot">Venmo opens with @{data.payTo.venmo}, ${data.amount} and the note filled in.</p>
-              </>
-            ) : (
-              <>
-                <div className="team-actions one">
-                  <button
-                    type="button"
-                    className="btn btn-glass"
-                    disabled={paying === d.week}
-                    onClick={async () => {
-                      setPaying(d.week);
-                      await iPaid(d.week);
-                      await load();
-                      setPaying(null);
-                    }}
-                  >
-                    {paying === d.week ? "Saving…" : "Mark my $" + data.amount + " as in"}
-                  </button>
-                </div>
-                <p className="team-foot">You hold the pot, so there&apos;s nothing to send.</p>
+                <p className="team-foot">
+                  {d.venmoUrl
+                    ? `${d.bookie.teamName} placed Week ${d.funds}, so they're the bookie. Venmo opens with @${d.bookie.venmo}, $${data.amount} and the note filled in.`
+                    : `${d.bookie.teamName} placed Week ${d.funds} but hasn't added a Venmo yet. Pay them however you like, then tap I paid.`}
+                </p>
               </>
             )}
           </section>
@@ -215,6 +206,7 @@ export function SlipView({ initial, pushKey }: { initial: SlipData; pushKey: str
                   <h2 className="team-name">{p.teamName}</h2>
                   <span className="team-meta">
                     {p.username} · <Num value={data.lastPlace!.points} /> pts
+                    {p.state !== "paid" && ` · pays ${data.lastPlace!.bookie ?? `Week ${data.lastPlace!.week + 1}'s bookie`}`}
                   </span>
                 </div>
                 <span className="team-pay"><PayChip state={p.state} amount={data.amount} /></span>

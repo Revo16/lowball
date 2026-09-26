@@ -827,3 +827,9 @@ details.record-row > summary { cursor: pointer; }
   width: 44px; border: 0; background: none; font: inherit; font-size: 20px; font-weight: 800; color: var(--muted); cursor: pointer;
 }
 .sign-toggle button.on { background: var(--teal-2); color: #fff; }
+.venmo-edit { font-weight: 400; margin-top: 2px; }
+.venmo-edit > summary { font-size: 12px; color: var(--teal-2); font-weight: 700; cursor: pointer; list-style: none; }
+.venmo-edit > summary::-webkit-details-marker { display: none; }
+.venmo-edit form { margin-top: 6px; gap: 6px; flex-wrap: nowrap; }
+.venmo-edit input { min-width: 0; flex: 1; padding: 6px 8px; font-size: 14px; }
+.venmo-edit .btn { padding: 6px 12px; font-size: 12px; }

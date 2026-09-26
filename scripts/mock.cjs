@@ -183,7 +183,8 @@ function filters(params) {
     const [op, ...rest] = v.split(".");
     fs.push([k, op, rest.join(".")]);
   }
-  return (row) => fs.every(([k, op, val]) => op === "eq" && String(row[k]) === val);
+  const like = (v, pat) => new RegExp("^" + pat.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/[%*]/g, ".*") + "$").test(String(v));
+  return (row) => fs.every(([k, op, val]) => (op === "eq" ? String(row[k]) === val : op === "like" ? like(row[k], val) : false));
 }
 
 async function rest(url, init) {
@@ -236,7 +237,11 @@ globalThis.fetch = async (input, init) => {
   if (url.hostname === "api.sleeper.app") {
     const p = url.pathname;
     if (p.endsWith("/state/nfl")) return json({ week: 3, season: "2026", season_type: "regular", season_start_date: "2026-09-09" });
-    if (p.endsWith("/users")) return json(users.map(([id, dn, tn]) => ({ user_id: id, display_name: dn, avatar: null, metadata: tn ? { team_name: tn } : {} })));
+    // Team pictures: one real-looking (inline SVG), one broken URL to exercise the initials fallback.
+    const pic = (id) =>
+      id === "1065164963234271232" ? "data:image/svg+xml;utf8," + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 10 10"><rect width="10" height="10" fill="#c0392b"/><circle cx="5" cy="5" r="3" fill="#fff"/></svg>')
+      : id === "1128911101363654656" ? "http://127.0.0.1:9/broken.jpg" : undefined;
+    if (p.endsWith("/users")) return json(users.map(([id, dn, tn]) => ({ user_id: id, display_name: dn, avatar: null, metadata: { ...(tn ? { team_name: tn } : {}), ...(pic(id) ? { avatar: pic(id) } : {}) } })));
     if (p.endsWith("/rosters")) return json(users.map(([id, , , r]) => ({ roster_id: r, owner_id: id })));
     const m = p.match(/matchups\/(\d+)$/);
     if (m) {

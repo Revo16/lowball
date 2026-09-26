@@ -28,8 +28,11 @@ export type Member = {
   inPool: boolean;   // playing this season
 };
 
+/** Accepts a team picture URL (from the league) or a Sleeper profile avatar id. */
 export function avatarUrl(avatar: string | null): string | null {
-  return avatar ? `https://sleepercdn.com/avatars/thumbs/${avatar}` : null;
+  if (!avatar) return null;
+  if (/^(https?:\/\/|data:image\/)/.test(avatar)) return avatar;
+  return `https://sleepercdn.com/avatars/thumbs/${avatar}`;
 }
 
 export async function nflState(): Promise<NflState> {
@@ -39,7 +42,7 @@ export async function nflState(): Promise<NflState> {
 /** League members joined with their roster ids. Cached for an hour. */
 export async function members(): Promise<Member[]> {
   const [users, rosters] = await Promise.all([
-    get<Array<{ user_id: string; display_name: string; avatar: string | null; metadata?: { team_name?: string } }>>(
+    get<Array<{ user_id: string; display_name: string; avatar: string | null; metadata?: { team_name?: string; avatar?: string } }>>(
       `/league/${config.leagueId}/users`, 3600),
     get<Array<{ roster_id: number; owner_id: string | null }>>(`/league/${config.leagueId}/rosters`, 3600),
   ]);
@@ -51,7 +54,9 @@ export async function members(): Promise<Member[]> {
       username: u.display_name,
       teamName: u.metadata?.team_name?.trim() || u.display_name,
       rosterId: rosterByOwner.get(u.user_id)!,
-      avatar: u.avatar,
+      // The team picture set for this league (what the Sleeper app shows),
+      // falling back to their personal profile picture.
+      avatar: u.metadata?.avatar?.trim() || u.avatar,
     }))
     .sort((a, b) => a.teamName.localeCompare(b.teamName));
   const pool = await poolIds().catch(() => null);

@@ -1,8 +1,9 @@
-import { StatusChip } from "@/components/chrome";
+import { StatusChip, PayChip } from "@/components/chrome";
 import { BottomNav } from "@/components/nav";
 import { AppBar, Avatar } from "@/components/ui";
 import { ActionForm, CopyButton, Submit } from "@/components/client";
-import { placeBet, nudge, pingChat } from "@/app/actions";
+import { placeBet, nudge, pingChat, confirmPayment } from "@/app/actions";
+import { venmos } from "@/lib/venmos";
 import { canEditLeg, cutoffFor, isEarly } from "@/lib/legrules";
 import { sweepEarlyLegs } from "@/lib/sweep";
 import { LegDeck, type DeckLeg } from "@/components/LegDeck";
@@ -10,7 +11,7 @@ import { LegDeck, type DeckLeg } from "@/components/LegDeck";
 const shortGame = (game: string) => game.split(" @ ").map((t) => t.trim().split(" ").slice(-1)[0]).join(" @ ");
 import { requireMember } from "@/lib/session";
 import { seasonNow } from "@/lib/season";
-import { getParlay } from "@/lib/db";
+import { getLosers, getParlay } from "@/lib/db";
 import { expectedPickers, slipText } from "@/lib/jobs";
 import { config } from "@/lib/config";
 import { formatAmerican } from "@/lib/math";
@@ -29,20 +30,26 @@ export default async function BookiePage() {
   const { me, all } = await requireMember();
   await sweepEarlyLegs().catch(() => null);
   const now = await seasonNow();
-  const [slip, parlay, pickers, feed, notifyOn] = await Promise.all([
+  const [slip, parlay, pickers, feed, notifyOn, handles, allLosers] = await Promise.all([
     slipText(now.season, now.week),
     getParlay(now.season, now.week),
     expectedPickers(now.season, now.week, all),
     oddsStatus().catch(() => null),
     pushEnabled() ? subscribedUserIds().catch(() => new Set<string>()) : Promise.resolve(new Set<string>()),
+    venmos(all.find((m) => m.isAdmin)?.userId).catch(() => new Map<string, string>()),
+    getLosers(now.season).catch(() => []),
   ]);
   const byId = new Map(all.map((m) => [m.userId, m]));
-  const admin = all.find((m) => m.isAdmin);
   const picked = new Set(slip.legs.map((l) => l.user_id));
   const missing = pickers.filter((p) => !picked.has(p.userId));
   const status = parlay?.status ?? "open";
   const placed = status !== "open";
   const placer = parlay?.placed_by ? byId.get(parlay.placed_by) ?? null : null;
+  // Last week's loser(s) fund this week's parlay, so they pay whoever placed it.
+  const owed = allLosers.filter((l) => l.week === now.week - 1);
+  const placerVenmo = placer ? handles.get(placer.userId) ?? null : null;
+  const canConfirm = !!placer && (placer.userId === me.userId || me.isAdmin);
+  const myVenmo = handles.get(me.userId) ?? "";
 
   // The one-tap parlay: every leg that has a DraftKings outcome id.
   const legs = [...slip.legs].sort((a, b) => (a.commence_time ?? "9").localeCompare(b.commence_time ?? "9"));
@@ -140,8 +147,47 @@ export default async function BookiePage() {
               </span>
             </div>
           </div>
-          <p className="team-foot">Losers pay @{config.payToVenmo}{admin ? ` (${admin.userId === me.userId ? "you" : admin.teamName})` : ""}.</p>
+          <p className="team-foot">
+            {placer
+              ? owed.length
+                ? `Week ${now.week - 1} loser pays ${placer.userId === me.userId ? "you" : placer.teamName}${placerVenmo ? ` (@${placerVenmo})` : ""}.`
+                : `No Week ${now.week - 1} loser on file yet.`
+              : `Whoever places it is the bookie: Week ${now.week - 1}'s loser pays them back $${config.loserAmount}.`}
+          </p>
         </section>
+
+        {/* Who owes the bookie, with Got it for the bookie (or admin) */}
+        {placer && owed.length > 0 && (
+          <section className="card">
+            <h2 className="h-section">Owed to {placer.userId === me.userId ? "you" : placer.teamName}</h2>
+            <div className="bottom">
+              {owed.map((l) => {
+                const who = byId.get(l.user_id);
+                const state = l.confirmed ? "paid" : l.paid ? "says-paid" : "owes";
+                return (
+                  <div className="bottom-row" key={l.user_id}>
+                    <span>
+                      {who?.teamName ?? "?"}
+                      {l.user_id === placer.userId && <span className="fine"> · placed it, so square</span>}
+                    </span>
+                    <span className="row" style={{ gap: 10 }}>
+                      <PayChip state={state} amount={config.loserAmount} />
+                      {canConfirm && l.user_id !== placer.userId && (
+                        <form action={confirmPayment}>
+                          <input type="hidden" name="week" value={l.week} />
+                          <input type="hidden" name="userId" value={l.user_id} />
+                          <input type="hidden" name="confirmed" value={l.confirmed ? "false" : "true"} />
+                          <button className="btn-link" type="submit">{l.confirmed ? "Undo" : "Got it"}</button>
+                        </form>
+                      )}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+            {canConfirm && <p className="fine">Tap Got it when the ${config.loserAmount} lands in your Venmo.</p>}
+          </section>
+        )}
 
         {/* 2. Slip to place (with "I placed it") */}
         <section className="card">
@@ -194,6 +240,10 @@ export default async function BookiePage() {
                     <label htmlFor="stake">Stake ($)</label>
                     <input id="stake" name="stake" inputMode="decimal" defaultValue={slip.stake} />
                   </div>
+                </div>
+                <div className="field">
+                  <label htmlFor="venmo">Your Venmo (last week&apos;s loser pays you back)</label>
+                  <input id="venmo" name="venmo" defaultValue={myVenmo} placeholder="your-venmo-name" autoCapitalize="none" autoCorrect="off" spellCheck={false} required />
                 </div>
                 <div className="field">
                   <label htmlFor="note">Note for the league (optional)</label>

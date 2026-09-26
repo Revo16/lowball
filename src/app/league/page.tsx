@@ -3,7 +3,8 @@ import { BottomNav } from "@/components/nav";
 import { AppBar, Avatar } from "@/components/ui";
 import { ActionForm, Submit } from "@/components/client";
 import { RecordGrid, type RecordWeek } from "@/components/RecordGrid";
-import { confirmPayment, setPoolMember, recomputeLoser } from "@/app/actions";
+import { confirmPayment, setPoolMember, recomputeLoser, setVenmo } from "@/app/actions";
+import { venmos } from "@/lib/venmos";
 import { requireMember } from "@/lib/session";
 import { seasonNow } from "@/lib/season";
 import { getLosers, getParlays } from "@/lib/db";
@@ -19,9 +20,13 @@ const SEASON_WEEKS = 18;
 export default async function LeaguePage() {
   const { me, all } = await requireMember();
   const now = await seasonNow();
-  const [parlays, losers] = await Promise.all([getParlays(now.season), getLosers(now.season)]);
-  const byId = new Map(all.map((m) => [m.userId, m]));
   const admin = all.find((m) => m.isAdmin);
+  const [parlays, losers, handles] = await Promise.all([
+    getParlays(now.season),
+    getLosers(now.season),
+    venmos(admin?.userId).catch(() => new Map<string, string>()),
+  ]);
+  const byId = new Map(all.map((m) => [m.userId, m]));
   const byWeek = new Map(parlays.map((p) => [p.week, p]));
 
   const weeks: RecordWeek[] = Array.from({ length: SEASON_WEEKS }, (_, i) => {
@@ -79,7 +84,20 @@ export default async function LeaguePage() {
                   <Avatar src={avatarUrl(m.avatar)} name={m.teamName} size={32} />
                   <span className="pool-name">
                     {m.teamName}
-                    <small>{m.username}</small>
+                    <small>
+                      {m.username}
+                      {handles.get(m.userId) ? ` · @${handles.get(m.userId)}` : ""}
+                    </small>
+                    {(m.userId === me.userId || me.isAdmin) && (
+                      <details className="venmo-edit">
+                        <summary>{handles.get(m.userId) ? "Edit Venmo" : "Add Venmo"}</summary>
+                        <ActionForm action={setVenmo} className="row">
+                          <input type="hidden" name="userId" value={m.userId} />
+                          <input name="venmo" defaultValue={handles.get(m.userId) ?? ""} placeholder="venmo-name" autoCapitalize="none" autoCorrect="off" spellCheck={false} aria-label={`Venmo for ${m.teamName}`} />
+                          <Submit className="btn btn-ghost">Save</Submit>
+                        </ActionForm>
+                      </details>
+                    )}
                   </span>
                   {me.isAdmin ? (
                     <form action={setPoolMember}>
@@ -110,17 +128,22 @@ export default async function LeaguePage() {
             <div className="table-wrap">
               <table>
                 <thead>
-                  <tr><th>Wk</th><th>Last place</th><th className="num-col">Pts</th><th></th><th></th></tr>
+                  <tr><th>Wk</th><th>Last place</th><th className="num-col">Pts</th><th>Pays</th><th></th><th></th></tr>
                 </thead>
                 <tbody>
-                  {losers.map((l) => (
+                  {losers.map((l) => {
+                    // Week W's loser pays whoever placed Week W+1.
+                    const bookieId = byWeek.get(l.week + 1)?.placed_by ?? null;
+                    const square = bookieId === l.user_id;
+                    return (
                     <tr key={`${l.week}-${l.user_id}`}>
                       <td>{l.week}</td>
                       <td>{byId.get(l.user_id)?.teamName ?? l.user_id}</td>
                       <td className="num-col">{Number(l.points).toFixed(2)}</td>
+                      <td className="small">{square ? "Placed it" : bookieId ? byId.get(bookieId)?.teamName ?? "?" : <span className="muted">Not placed</span>}</td>
                       <td><PayChip state={l.confirmed ? "paid" : l.paid ? "says-paid" : "owes"} amount={config.loserAmount} /></td>
                       <td>
-                        {me.isAdmin && (
+                        {(me.isAdmin || (bookieId === me.userId && !square)) && (
                           <form action={confirmPayment}>
                             <input type="hidden" name="week" value={l.week} />
                             <input type="hidden" name="userId" value={l.user_id} />
@@ -130,14 +153,14 @@ export default async function LeaguePage() {
                         )}
                       </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
           )}
           <p className="fine">
-            Everyone pays @{config.payToVenmo}{admin ? ` (${admin.teamName})` : ""}.
-            {me.isAdmin ? " Tap Got it when the $5 lands." : ""}
+            Each week&apos;s loser pays whoever placed the next week&apos;s parlay. That bookie taps Got it when the ${config.loserAmount} lands{me.isAdmin ? " (you can too)" : ""}.
           </p>
           <details>
             <summary className="small muted">Stat correction or pool change? Re-pull a week</summary>
@@ -148,7 +171,10 @@ export default async function LeaguePage() {
               </div>
               <Submit className="btn btn-ghost">Pull loser from Sleeper</Submit>
             </ActionForm>
-            <p className="fine">Anyone who already paid stays on the books.</p>
+            <p className="fine">
+              Re-checks that one week against Sleeper&apos;s current scores and today&apos;s player list, and replaces its loser.
+              Other weeks aren&apos;t touched. Anyone who already paid for that week stays on the books.
+            </p>
           </details>
         </section>
       </main>

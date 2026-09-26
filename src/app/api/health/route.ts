@@ -9,14 +9,13 @@ export const dynamic = "force-dynamic";
 
 const REQUIRED = [
   "SLEEPER_LEAGUE_ID",
-  "PAY_TO_VENMO",
   "LEAGUE_PIN",
   "SESSION_SECRET",
   "CRON_SECRET",
   "SUPABASE_URL",
   "SUPABASE_SERVICE_ROLE_KEY",
 ];
-const OPTIONAL = ["ADMIN_SLEEPER_USERNAME", "SGO_API_KEY", "VAPID_PUBLIC_KEY", "VAPID_PRIVATE_KEY", "APP_URL"];
+const OPTIONAL = ["PAY_TO_VENMO", "VENMOS", "ADMIN_SLEEPER_USERNAME", "SGO_API_KEY", "VAPID_PUBLIC_KEY", "VAPID_PRIVATE_KEY", "APP_URL"];
 const TABLES = ["legs", "losers", "parlays", "odds_cache", "sent_messages", "push_subs", "pool"];
 
 type Check = { ok: boolean; detail: string };

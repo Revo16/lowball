@@ -87,7 +87,7 @@ export async function loserMessage(season: string, week: number) {
   if (!result || !result.members.length) return null;
   const names = result.members.map((m) => m.teamName).join(" and ");
   const who = result.tied ? `${names} tied for last` : `${names} finished last`;
-  const pay = `$${config.loserAmount}${result.tied ? " each" : ""} to @${config.payToVenmo}.`;
+  const pay = `${result.tied ? "Each owes" : "Owes"} $${config.loserAmount} to whoever places the Week ${week + 1} parlay. The Pay button shows up in the app once it's placed.`;
   return [
     `Week ${week}: ${who} with ${result.points.toFixed(2)}.`,
     `${pay} ${link("/")}`,

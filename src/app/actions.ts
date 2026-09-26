@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { config } from "@/lib/config";
-import { db, getLegs, getParlay, claimMessage, type Leg } from "@/lib/db";
+import { db, getLegs, getLosers, getParlay, claimMessage, type Leg } from "@/lib/db";
 import { pushEnabled, pushTo } from "@/lib/push";
 import { formatPt } from "@/lib/weeks";
 import { setInPool } from "@/lib/pool";
@@ -16,6 +16,7 @@ import { recordLosers, expectedPickers, lockMessage } from "@/lib/jobs";
 import { notify } from "@/lib/notify";
 import { canEditLeg, editBlockedReason, isPickable, CUTOFF_MIN } from "@/lib/legrules";
 import { sweepEarlyLegs } from "@/lib/sweep";
+import { saveVenmo, cleanHandle } from "@/lib/venmos";
 
 export type FormState = { error?: string; ok?: string };
 
@@ -343,20 +344,30 @@ export async function restoreLeg(token: string): Promise<PickResult> {
 export async function iPaid(week: number) {
   const { me } = await requireMember();
   const now = await seasonNow();
-  // The admin holds the money, so their own "payment" is confirmed on the spot.
+  // "Says paid" until the bookie (or the admin) taps Got it.
   await db()
     .from("losers")
-    .update({ paid: true, paid_at: new Date().toISOString(), ...(me.isAdmin ? { confirmed: true } : {}) })
+    .update({ paid: true, paid_at: new Date().toISOString() })
     .match({ season: now.season, week, user_id: me.userId });
+  const bookie = (await getParlay(now.season, week + 1))?.placed_by;
+  if (bookie && bookie !== me.userId) {
+    await pushTo([bookie], {
+      title: `${me.teamName} says they paid you $${config.loserAmount}`,
+      body: `Week ${week} loser. Check Venmo, then tap Got it on the Bookie tab.`,
+      url: "/bookie",
+      tag: `paid-${week}-${me.userId}`,
+    }).catch(() => null);
+  }
   refresh();
 }
 
-/** Every $5 goes to the admin's Venmo, so only the admin marks it received. */
+/** The loser pays whoever placed the parlay their $5 funds, so that bookie (or the admin) marks it received. */
 export async function confirmPayment(form: FormData) {
   const { me } = await requireMember();
-  if (!me.isAdmin) return;
   const now = await seasonNow();
   const week = Number(str(form, "week"));
+  const bookie = (await getParlay(now.season, week + 1))?.placed_by;
+  if (!me.isAdmin && bookie !== me.userId) return;
   const userId = str(form, "userId");
   const confirmed = str(form, "confirmed") === "true";
   const patch: Record<string, unknown> = { confirmed };
@@ -366,6 +377,22 @@ export async function confirmPayment(form: FormData) {
   }
   await db().from("losers").update(patch).match({ season: now.season, week, user_id: userId });
   refresh();
+}
+
+/* ---------- Venmo ---------- */
+
+/** Set your own Venmo (anyone) or someone else's (admin). */
+export async function setVenmo(_: FormState, form: FormData): Promise<FormState> {
+  try {
+    const { me } = await requireMember();
+    const userId = str(form, "userId") || me.userId;
+    if (userId !== me.userId && !me.isAdmin) return { error: "You can only change your own Venmo." };
+    const h = await saveVenmo(userId, str(form, "venmo"));
+    refresh();
+    return { ok: `Saved @${h}` };
+  } catch (err) {
+    return { error: (err as Error).message };
+  }
 }
 
 /* ---------- pool ---------- */
@@ -413,6 +440,15 @@ export async function placeBet(_: FormState, form: FormData): Promise<FormState>
     const odds = parseOdds(str(form, "dk_odds"));
     if (odds === undefined) return { error: "Final odds should look like +2450, the way DraftKings shows them." };
     const stake = parseMoney(str(form, "stake"));
+    // Whoever places it is the bookie: last week's loser(s) pay them back, so we
+    // need their Venmo.
+    const handle = str(form, "venmo");
+    if (!handle) return { error: "Add your Venmo so last week's loser can pay you back." };
+    try {
+      await saveVenmo(me.userId, handle);
+    } catch (err) {
+      return { error: (err as Error).message };
+    }
     const res = await db().from("parlays").upsert(
       {
         season: now.season,
@@ -427,9 +463,30 @@ export async function placeBet(_: FormState, form: FormData): Promise<FormState>
       { onConflict: "season,week" },
     );
     if (res.error) return { error: res.error.message };
+
+    // Last week's loser(s) now owe the placer. If the placer is one of them,
+    // they fronted their own $5, so they're square.
+    const owing = (await getLosers(now.season)).filter((l) => l.week === now.week - 1 && !l.confirmed);
+    for (const l of owing.filter((l) => l.user_id === me.userId)) {
+      await db().from("losers").update({ paid: true, confirmed: true, paid_at: new Date().toISOString() })
+        .match({ season: now.season, week: l.week, user_id: l.user_id });
+    }
+    const others = owing.filter((l) => l.user_id !== me.userId && !l.paid).map((l) => l.user_id);
+    if (others.length) {
+      await pushTo(others, {
+        title: `Pay ${me.teamName} $${config.loserAmount}`,
+        body: `They placed the Week ${now.week} parlay, so your Week ${now.week - 1} $${config.loserAmount} goes to them. Tap to pay on Venmo.`,
+        url: "/",
+        tag: `pay-${now.week - 1}`,
+      }).catch(() => null);
+    }
     refresh();
-    await notify(`${me.teamName} placed the Week ${now.week} parlay${odds ? ` at ${odds > 0 ? "+" : ""}${odds}` : ""}.`).catch(() => null);
-    return { ok: "Recorded. The Slip shows it's placed." };
+    const payers = others.length ? ` Last week's loser pays you: $${config.loserAmount} to @${cleanHandle(handle)}.` : "";
+    await notify(
+      `${me.teamName} placed the Week ${now.week} parlay${odds ? ` at ${odds > 0 ? "+" : ""}${odds}` : ""}.` +
+        (others.length ? ` Week ${now.week - 1} loser: send $${config.loserAmount} to @${cleanHandle(handle)} (tap Pay in the app).` : ""),
+    ).catch(() => null);
+    return { ok: `Recorded. You're the Week ${now.week} bookie.${payers}` };
   } catch (err) {
     return { error: (err as Error).message };
   }
