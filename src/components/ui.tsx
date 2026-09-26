@@ -50,3 +50,13 @@ export function Avatar({ src, name, size = 40 }: { src: string | null; name: str
 export function Hex({ children }: { children: React.ReactNode }) {
   return <span className="hex">{children}</span>;
 }
+
+/** Small padlock for "Own pick": only that player can change it. */
+export function LockIcon() {
+  return (
+    <svg className="lock-ic" viewBox="0 0 16 16" width="11" height="11" aria-hidden="true">
+      <rect x="3" y="7" width="10" height="8" rx="1.5" fill="currentColor" />
+      <path d="M5 7V5a3 3 0 0 1 6 0v2" fill="none" stroke="currentColor" strokeWidth="1.8" />
+    </svg>
+  );
+}

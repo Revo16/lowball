@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, type PointerEvent as RPointerEvent } from "react";
-import { Avatar } from "@/components/ui";
+import { Avatar, LockIcon } from "@/components/ui";
 import { removeLeg, restoreLeg } from "@/app/actions";
 
 // The Bookie tab's legs, one card each, Gmail-style:
@@ -299,15 +299,6 @@ function SwipeCard({ leg, onRemove, onChange, hint }: { leg: DeckLeg; onRemove: 
         )}
       </div>
     </li>
-  );
-}
-
-function LockIcon() {
-  return (
-    <svg className="lock-ic" viewBox="0 0 16 16" width="11" height="11" aria-hidden="true">
-      <rect x="3" y="7" width="10" height="8" rx="1.5" fill="currentColor" />
-      <path d="M5 7V5a3 3 0 0 1 6 0v2" fill="none" stroke="currentColor" strokeWidth="1.8" />
-    </svg>
   );
 }
 

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Countdown } from "@/components/client";
 import { StatusChip, PayChip } from "@/components/chrome";
-import { AppBar, Avatar, Hex, Num } from "@/components/ui";
+import { AppBar, Avatar, Hex, LockIcon, Num } from "@/components/ui";
 import { PushToggle } from "@/components/PushToggle";
 import { iPaid, signOut, removeLeg } from "@/app/actions";
 import type { SlipData, SlipLeg } from "@/lib/slip";
@@ -113,15 +113,24 @@ export function SlipView({ initial, pushKey }: { initial: SlipData; pushKey: str
               <span className="board-label">Parlay odds</span>
               <span className="board-big">{formatAmerican(shownOdds)}</span>
               <span className={`board-sub ${oddsMoved ? (oddsBetter ? "good" : "bad") : ""}`}>
-                {totals.final ? (data.placedBy ? `Placed by ${data.placedBy}` : "Final from DraftKings") : oddsMoved ? `${formatAmerican(totals.atPick)} at pick` : "Live estimate"}
+                {totals.final ? (data.placedBy ? `Placed by ${data.placedBy}` : "Final from DraftKings") : oddsMoved ? `${formatAmerican(totals.atPick)} at pick` : "Live"}
+                {" · "}
+                <Num value={totals.stake} prefix="$" /> stake
               </span>
             </div>
             <span className="vs">vs</span>
             <div className="board-side right">
-              <span className="board-label">To win</span>
-              <Num className="board-big" value={totals.toWin} prefix="$" />
-              <span className="board-sub">
-                <Num value={totals.stake} prefix="$" /> stake
+              {/* What DraftKings pays back if it hits (stake included), and each person's share. */}
+              <span className="board-label">{data.status === "won" ? "Paid" : "Pays"}</span>
+              <Num className="board-big" value={data.winnings.payout} prefix="$" />
+              <span className="board-sub each-good">
+                {data.winnings.perPerson != null ? (
+                  <>
+                    <Num value={data.winnings.perPerson} prefix="$" /> each
+                  </>
+                ) : (
+                  "—"
+                )}
               </span>
             </div>
           </div>
@@ -244,8 +253,13 @@ export function SlipView({ initial, pushKey }: { initial: SlipData; pushKey: str
                       <>
                         <strong className="sel">{leg.selection}</strong>
                         <span className="leg-sub">
-                          {row.teamName}
-                          {row.isMe && " (you)"}
+                          <span className="who">{row.teamName}{row.isMe && " (you)"}</span>
+                          {" "}
+                          {leg.enteredBy ? (
+                            <span className="entered">· Entered by {leg.enteredBy}</span>
+                          ) : (
+                            <span className="own-pick">· <LockIcon /> Own pick</span>
+                          )}
                         </span>
                       </>
                     ) : (
@@ -269,7 +283,6 @@ export function SlipView({ initial, pushKey }: { initial: SlipData; pushKey: str
                 {leg && (
                   <div className="leg-strip">
                     <span>
-                      {leg.enteredBy && <span className="entered">Entered by {leg.enteredBy} · </span>}
                       {leg.market === "custom" ? leg.game : shortGame(leg.game)}
                       {leg.kickoff && ` · ${formatPt(new Date(leg.kickoff), { weekday: "short", hour: "numeric", minute: "2-digit" })}`}
                     </span>
@@ -294,35 +307,6 @@ export function SlipView({ initial, pushKey }: { initial: SlipData; pushKey: str
             );
           })}
         </ol>
-
-        {/* Winnings under the slip */}
-        <section className="win-card" aria-label="Winnings">
-          <div className="win-grid">
-            <div className="win-col">
-              <span className="board-label">{data.status === "won" ? `Week ${data.week} paid` : `If Week ${data.week} hits`}</span>
-              <Num className="win-big" value={data.winnings.payout} prefix="$" />
-              <span className="win-each">
-                {data.winnings.perPerson != null ? (
-                  <>
-                    <Num value={data.winnings.perPerson} prefix="$" /> each
-                  </>
-                ) : (
-                  "—"
-                )}
-                <span className="muted" style={{ fontWeight: 600 }}> · {data.winnings.split} players</span>
-              </span>
-            </div>
-            <div className="win-col right">
-              <span className="board-label">Season won</span>
-              <Num className="win-big" value={data.winnings.season.total} prefix="$" />
-              <span className={`win-each ${data.winnings.season.hits ? "" : "muted"}`}>
-                <Num value={data.winnings.season.perPerson} prefix="$" /> each
-                <span className="muted" style={{ fontWeight: 600 }}> · {data.winnings.season.hits} hit{data.winnings.season.hits === 1 ? "" : "s"}</span>
-              </span>
-            </div>
-          </div>
-          <p className="fine">Payout includes the stake. Split evenly across everyone on that week&apos;s slip.</p>
-        </section>
 
         {/* The opposite of Add your leg: at the bottom, away from the legs, so it's hard to hit by accident */}
         {myRow?.leg && data.me.canRemove && (

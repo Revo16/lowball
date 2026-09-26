@@ -1,10 +1,11 @@
 import { PayChip } from "@/components/chrome";
 import { BottomNav } from "@/components/nav";
-import { AppBar, Avatar } from "@/components/ui";
+import { AppBar, Avatar, Num } from "@/components/ui";
 import { ActionForm, Submit } from "@/components/client";
 import { RecordGrid, type RecordWeek } from "@/components/RecordGrid";
 import { confirmPayment, setPoolMember, recomputeLoser, setVenmo } from "@/app/actions";
 import { venmos } from "@/lib/venmos";
+import { seasonWinnings } from "@/lib/winnings";
 import { requireMember } from "@/lib/session";
 import { seasonNow } from "@/lib/season";
 import { getLosers, getParlays } from "@/lib/db";
@@ -46,6 +47,7 @@ export default async function LeaguePage() {
     };
   });
   const won = parlays.filter((p) => p.status === "won").length;
+  const season = await seasonWinnings(now.season, parlays);
   const lost = parlays.filter((p) => p.status === "lost").length;
   const inPool = all.filter((m) => m.inPool).length;
 
@@ -65,6 +67,17 @@ export default async function LeaguePage() {
             <span className="record-score">
               <b>{won}</b>–<b>{lost}</b>
             </span>
+          </div>
+          <div className="season-won">
+            <div>
+              <span className="board-label">Season won</span>
+              <Num value={season.total} prefix="$" />
+            </div>
+            <div>
+              <span className="board-label">Each</span>
+              <Num value={season.perPerson} prefix="$" className={season.hits ? "each-good" : ""} />
+              <span className="small muted">{season.hits} hit{season.hits === 1 ? "" : "s"}</span>
+            </div>
           </div>
           <RecordGrid weeks={weeks} isAdmin={me.isAdmin} />
           {me.isAdmin && <p className="fine">Tap a week to set its result, odds or payout.</p>}

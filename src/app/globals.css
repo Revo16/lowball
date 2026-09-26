@@ -250,7 +250,9 @@ sup { font-size: 0.5em; vertical-align: 0.72em; margin-left: 1px; font-weight: 7
 .leg-main { display: grid; min-width: 0; }
 .sel { font-size: 16px; font-weight: 700; line-height: 1.2; overflow-wrap: anywhere; }
 .empty-sel { color: #a3a7ad; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; font-size: 14px; }
-.leg-sub { font-size: 12.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.leg-sub { font-size: 12.5px; color: var(--muted); line-height: 1.35; overflow-wrap: break-word; }
+/* Team name and its Own pick / Entered by note each stay whole; the note drops to the next line if it doesn't fit. */
+.leg-sub .who, .leg-sub .entered, .leg-sub .own-pick { white-space: nowrap; }
 .leg-price { display: grid; justify-items: end; gap: 0; }
 .leg-price b { font-size: 19px; font-weight: 700; }
 .leg-price small { font-size: 12px; font-weight: 700; text-decoration: line-through; text-decoration-thickness: 1px; }
@@ -612,13 +614,6 @@ input, select, textarea {
 .notify-card .btn { padding: 10px 14px; font-size: 13px; }
 
 /* winnings */
-.win-card { background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow); padding: 14px 16px; display: grid; gap: 10px; }
-.win-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
-.win-col { display: grid; gap: 1px; }
-.win-col.right { text-align: right; justify-items: end; }
-.win-big { font-size: 28px; font-weight: 700; line-height: 1.05; }
-.win-each { font-size: 14px; font-weight: 700; color: var(--green); }
-.win-each.muted { color: var(--muted); }
 
 /* record */
 .record-row { border-top: 1px solid var(--line); padding: 8px 0; }
@@ -833,3 +828,10 @@ details.record-row > summary { cursor: pointer; }
 .venmo-edit form { margin-top: 6px; gap: 6px; flex-wrap: nowrap; }
 .venmo-edit input { min-width: 0; flex: 1; padding: 6px 8px; font-size: 14px; }
 .venmo-edit .btn { padding: 6px 12px; font-size: 12px; }
+
+.each-good { color: var(--green) !important; }
+.own-pick { color: var(--muted); font-weight: 600; white-space: nowrap; }
+.season-won { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; background: var(--card-2); border-radius: 6px; padding: 10px 12px; }
+.season-won > div { display: grid; }
+.season-won > div:last-child { text-align: right; justify-items: end; }
+.season-won .num { font-size: 24px; line-height: 1.1; }

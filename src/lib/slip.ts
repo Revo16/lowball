@@ -72,7 +72,6 @@ export type SlipData = {
     payout: number | null;      // what DraftKings pays back if it hits (stake included)
     perPerson: number | null;
     split: number;              // people on the slip
-    season: { total: number; perPerson: number; hits: number };
   };
   /** The admin, for "ask them to add you". */
   payTo: { teamName: string | null };
@@ -195,8 +194,8 @@ export async function slipData(me: Member, all: Member[]): Promise<SlipData> {
   const bottom = await liveBottom(now.week, 1).catch(() => []);
   const admin = all.find((m) => m.isAdmin);
 
-  // Winnings: this week's payout split across everyone on the slip, and the
-  // season's hits split across whoever was on each of those slips.
+  // This week's payout split across everyone on the slip. (Season winnings
+  // live on the League tab.)
   const round2 = (n: number) => Math.round(n * 100) / 100;
   const weekPayout =
     parlay?.status === "won" && parlay.payout != null
@@ -205,16 +204,6 @@ export async function slipData(me: Member, all: Member[]): Promise<SlipData> {
         ? payout(finalStake, decimalForWin)
         : null;
   const split = Math.max(1, rows.length);
-  let seasonTotal = 0;
-  let seasonEach = 0;
-  const hits = parlays.filter((p) => p.status === "won");
-  for (const p of hits) {
-    const paid =
-      p.payout != null ? Number(p.payout) : p.stake != null && p.dk_odds ? payout(Number(p.stake), americanToDecimal(p.dk_odds)) : 0;
-    const people = p.week === now.week ? split : (await getLegs(now.season, p.week)).length || split;
-    seasonTotal += paid;
-    seasonEach += paid / people;
-  }
   // A loser's $5 funds the next week's parlay, so they pay whoever placed it
   // (that week's bookie). Until someone places it there's nobody to pay yet.
   const handles = await venmos(admin?.userId).catch(() => new Map<string, string>());
@@ -271,7 +260,6 @@ export async function slipData(me: Member, all: Member[]): Promise<SlipData> {
       payout: weekPayout != null ? round2(weekPayout) : null,
       perPerson: weekPayout != null ? round2(weekPayout / split) : null,
       split,
-      season: { total: round2(seasonTotal), perPerson: round2(seasonEach), hits: hits.length },
     },
     payTo: { teamName: admin?.teamName ?? null },
     placedBy: parlay?.placed_by ? byId.get(parlay.placed_by)?.teamName ?? null : null,
