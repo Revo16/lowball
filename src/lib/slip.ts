@@ -47,6 +47,8 @@ export type SlipRow = {
 };
 
 export type SlipData = {
+  /** Which deploy built this. An open page that sees a new one reloads instead of mixing versions. */
+  build: string;
   week: number;
   season: string;
   lock: string;
@@ -255,6 +257,7 @@ export async function slipData(me: Member, all: Member[]): Promise<SlipData> {
       };
     });
   return {
+    build: process.env.VERCEL_GIT_COMMIT_SHA ?? process.env.VERCEL_DEPLOYMENT_ID ?? "dev",
     week: now.week,
     season: now.season,
     lock: now.lock.toISOString(),

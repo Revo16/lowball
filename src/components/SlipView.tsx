@@ -44,6 +44,12 @@ export function SlipView({ initial, pushKey }: { initial: SlipData; pushKey: str
       }
       if (!res.ok) return;
       const next = (await res.json()) as SlipData;
+      // A new version went live while this page was open: load it fresh
+      // rather than feed new data to old screens.
+      if (next.build && prev.current.build && next.build !== prev.current.build) {
+        window.location.reload();
+        return;
+      }
       const changes: Record<string, "up" | "down" | "new"> = {};
       for (const row of next.rows) {
         const before = prev.current.rows.find((r) => r.userId === row.userId)?.leg;
