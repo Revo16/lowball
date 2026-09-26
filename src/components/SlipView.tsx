@@ -218,6 +218,16 @@ export function SlipView({ initial, pushKey }: { initial: SlipData; pushKey: str
             </section>
           ))}
 
+        {/* Big "Optimize"-style button (old NFL Fantasy app) when your slot is empty */}
+        {myRow && !myRow.leg && canPick && (
+          <div className="opt-wrap">
+            <Link href="/search" className="opt-btn">
+              <span className="opt-num">{data.picked}/{data.needed}</span>
+              <span className="opt-label">Add your leg</span>
+            </Link>
+          </div>
+        )}
+
         <h2 className="section-label">Legs</h2>
 
         <ol className="legs">
@@ -255,8 +265,6 @@ export function SlipView({ initial, pushKey }: { initial: SlipData; pushKey: str
                         <b>{formatAmerican(leg.status === "live" ? leg.livePrice : leg.pickPrice)}</b>
                         {d && <small className={d === "up" ? "good" : "bad"}>{formatAmerican(leg.pickPrice)}</small>}
                       </>
-                    ) : row.isMe && canPick ? (
-                      <Link href="/search" className="add-btn">+ Add</Link>
                     ) : (
                       <b className="dash">—</b>
                     )}
@@ -316,9 +324,6 @@ export function SlipView({ initial, pushKey }: { initial: SlipData; pushKey: str
           <p className="fine">Payout includes the stake. Split evenly across everyone on that week&apos;s slip.</p>
         </section>
 
-        {myRow && !myRow.leg && canPick && (
-          <Link href="/search" className="btn btn-green btn-block">Find your leg</Link>
-        )}
         {!data.me.inPool && (
           <p className="fine center">You&apos;re not in the pool this season. Ask {data.payTo.teamName ?? "the admin"} to add you.</p>
         )}
