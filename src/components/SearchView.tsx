@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ActionForm, Countdown, Submit } from "@/components/client";
 import { AppBar } from "@/components/ui";
-import { pickBoardLine, pickCustom, removeLeg } from "@/app/actions";
+import { pickBoardLine, pickCustom } from "@/app/actions";
 import type { BoardData, BoardGame, BoardLeg } from "@/lib/board";
 import { conflictFor, MARKET_LABEL, shortTeam, type BoardLine } from "@/lib/lines";
 import { formatAmerican } from "@/lib/math";
@@ -105,6 +105,7 @@ export function SearchView({ initial }: { initial: BoardData }) {
   async function pick(l: BoardLine) {
     if (!canPick || pending) return;
     setPending(l.key);
+    const swapping = !!myLeg && !initial.forOther;
     const r = await pickBoardLine({ eventId: l.eventId, market: l.market, name: l.name, desc: l.desc, point: l.point, forUser });
     setPending(null);
     if (r.error) {
@@ -116,18 +117,9 @@ export function SearchView({ initial }: { initial: BoardData }) {
       ...prev.filter((x) => x.userId !== target.userId),
       { userId: target.userId, teamName: target.teamName, eventId: l.eventId, market: l.market, desc: l.desc || null, key: r.key ?? l.key, selection: l.label, price: l.price, enteredBy: initial.forOther ? initial.meId : null },
     ]);
-    setToast({ kind: "ok", text: r.ok ?? "On the slip" });
+    setToast({ kind: "ok", text: swapping ? `Swapped to ${l.label}` : r.ok ?? "On the slip" });
     // Picking for someone else: back to the Bookie tab for the next name.
     if (initial.forOther) setTimeout(() => (window.location.href = "/bookie"), 1400);
-  }
-
-  async function remove() {
-    const r = await removeLeg(forUser);
-    if (r.error) setToast({ kind: "error", text: r.error });
-    else {
-      setLegs((prev) => prev.filter((x) => x.userId !== target.userId));
-      setToast({ kind: "ok", text: "Removed from the slip" });
-    }
   }
 
   const browsing = !q && chip === "all" && !gameFilter;
@@ -191,34 +183,17 @@ export function SearchView({ initial }: { initial: BoardData }) {
         </div>
       )}
 
-      <section className={`current ${myLeg ? "has" : ""}`} aria-live="polite">
-        {myLeg ? (
-          <>
-            <div>
-              <span className="eyebrow">{target.userId !== initial.meId ? `${target.teamName}'s leg` : "Your leg"}</span>
-              <strong>{myLeg.selection}</strong>
-            </div>
-            <span className="mono">{formatAmerican(myLeg.price)}</span>
-            {initial.canRemove && (
-              <button type="button" className="btn-link" onClick={remove}>Remove</button>
-            )}
-          </>
-        ) : canPick ? (
-          <span>
-            {initial.forOther
-              ? `Picking for ${target.teamName}. Tap a line to put it on the slip for them.`
-              : "Tap any line to put it on the slip. Tap another to swap."}
-          </span>
-        ) : (
-          <span>
-            {initial.forOther
-              ? `${target.teamName} isn't in the pool, or picked their own leg (only they can change it).`
-              : initial.locked
-                ? "Picks are locked for this week."
-                : "You're not picking this week (not in the pool, or funding this one)."}
-          </span>
-        )}
-      </section>
+      {/* Your current pick shows highlighted in the lines below; tap another to swap.
+          Removing lives on The Slip. Only say something when picking isn't possible. */}
+      {!canPick && (
+        <p className="fine" role="status">
+          {initial.forOther
+            ? `${target.teamName} isn't in the pool, or picked their own leg (only they can change it).`
+            : initial.locked
+              ? "Picks are locked for this week."
+              : "You're not picking this week (not in the pool, or funding this one)."}
+        </p>
+      )}
 
       <div className="searchbar">
         <input

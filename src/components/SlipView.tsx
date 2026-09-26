@@ -6,7 +6,7 @@ import { Countdown } from "@/components/client";
 import { StatusChip, PayChip } from "@/components/chrome";
 import { AppBar, Avatar, Hex, Num } from "@/components/ui";
 import { PushToggle } from "@/components/PushToggle";
-import { iPaid, signOut } from "@/app/actions";
+import { iPaid, signOut, removeLeg } from "@/app/actions";
 import type { SlipData, SlipLeg } from "@/lib/slip";
 import { americanToDecimal, formatAmerican } from "@/lib/math";
 import { formatPt } from "@/lib/weeks";
@@ -69,6 +69,19 @@ export function SlipView({ initial, pushKey }: { initial: SlipData; pushKey: str
       /* offline for a moment; the next poll catches up */
     }
   }, []);
+
+  const [removing, setRemoving] = useState(false);
+  const [removeMsg, setRemoveMsg] = useState<string | null>(null);
+  async function removeMine() {
+    const mine = data.rows.find((r) => r.isMe)?.leg;
+    if (!mine || removing) return;
+    if (!window.confirm(`Remove your leg (${mine.selection}) from the slip?`)) return;
+    setRemoving(true);
+    const r = await removeLeg(null);
+    setRemoving(false);
+    setRemoveMsg(r.error ?? null);
+    await load();
+  }
 
   useEffect(() => {
     const tick = () => {
@@ -324,6 +337,18 @@ export function SlipView({ initial, pushKey }: { initial: SlipData; pushKey: str
           <p className="fine">Payout includes the stake. Split evenly across everyone on that week&apos;s slip.</p>
         </section>
 
+        {/* The opposite of Add your leg: at the bottom, away from the legs, so it's hard to hit by accident */}
+        {myRow?.leg && data.me.canRemove && (
+          <div className="opt-wrap opt-wrap-bottom">
+            <button type="button" className="opt-btn opt-red" onClick={removeMine} disabled={removing}>
+              <span className="opt-num" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="24" height="24"><path d="M9 3h6l1 2h4v2H4V5h4l1-2Zm-3 6h12l-1 12H7L6 9Zm4 2v8h2v-8h-2Zm4 0v8h2v-8h-2Z" fill="currentColor" /></svg>
+              </span>
+              <span className="opt-label">{removing ? "Removing…" : "Remove your leg"}</span>
+            </button>
+          </div>
+        )}
+        {removeMsg && <p className="fine center bad" role="status">{removeMsg}</p>}
         {!data.me.inPool && (
           <p className="fine center">You&apos;re not in the pool this season. Ask {data.payTo.teamName ?? "the admin"} to add you.</p>
         )}

@@ -7,6 +7,7 @@ import { expectedPickers, stakeFor } from "./jobs";
 import { americanToDecimal, parlayOdds, payout } from "./math";
 import { gameOdds, propSlate, dkMarkets, currentPrice, MARKET_LABEL, type Market, type OddsWindow } from "./odds";
 import { venmoPayLink } from "./venmo";
+import { canEditLeg } from "./legrules";
 
 // Everything The Slip page shows, as plain JSON. The page renders it once on
 // the server and then re-fetches it every 30 seconds.
@@ -63,7 +64,7 @@ export type SlipData = {
   placedBy: string | null;
   amount: number;
   parlayNote: string | null;
-  me: { userId: string; teamName: string; avatar: string | null; isAdmin: boolean; inPool: boolean; picks: boolean };
+  me: { userId: string; teamName: string; avatar: string | null; isAdmin: boolean; inPool: boolean; picks: boolean; canRemove: boolean };
   leagueSize: number;
   updatedAt: string;
 };
@@ -244,7 +245,12 @@ export async function slipData(me: Member, all: Member[]): Promise<SlipData> {
     amount: config.loserAmount,
     parlayNote: parlay?.note ?? null,
     leagueSize: all.length,
-    me: { userId: me.userId, teamName: me.teamName, avatar: avatarUrl(me.avatar), isAdmin: me.isAdmin, inPool: me.inPool, picks: pickers.some((p) => p.userId === me.userId) },
+    me: { userId: me.userId, teamName: me.teamName, avatar: avatarUrl(me.avatar), isAdmin: me.isAdmin, inPool: me.inPool, picks: pickers.some((p) => p.userId === me.userId),
+      canRemove: legByUser.has(me.userId) && canEditLeg(
+        { userId: me.userId, enteredBy: legByUser.get(me.userId)!.entered_by },
+        { viewerId: me.userId, isAdmin: me.isAdmin, locked: now.locked, placed: frozen },
+      ),
+    },
     updatedAt: new Date().toISOString(),
   };
 }
