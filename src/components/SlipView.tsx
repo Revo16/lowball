@@ -9,20 +9,11 @@ import { PushToggle } from "@/components/PushToggle";
 import { iPaid, signOut, removeLeg } from "@/app/actions";
 import type { SlipData, SlipLeg } from "@/lib/slip";
 import { americanToDecimal, formatAmerican } from "@/lib/math";
+import { slotCode } from "@/lib/lines";
 import { formatPt } from "@/lib/weeks";
 
 const POLL_MS = 30_000;
 
-const SLOT: Record<string, string> = {
-  spreads: "SPR",
-  h2h: "ML",
-  totals: "TOT",
-  player_anytime_td: "TD",
-  player_pass_yds: "PASS",
-  player_rush_yds: "RUSH",
-  player_reception_yds: "REC",
-  custom: "BET",
-};
 
 function shortGame(game: string) {
   return game
@@ -254,7 +245,7 @@ export function SlipView({ initial, pushKey }: { initial: SlipData; pushKey: str
                 className={["leg", row.isMe ? "mine" : "", leg ? "" : "empty", f ? `flash-${f}` : ""].join(" ")}
               >
                 <div className="leg-row">
-                  <span className="slot">{leg ? SLOT[leg.market] ?? "BET" : "—"}</span>
+                  <span className="slot">{leg ? slotCode(leg.market) : "—"}</span>
                   <Avatar src={row.avatar} name={row.teamName} size={42} />
                   <div className="leg-main">
                     {leg ? (
@@ -290,7 +281,11 @@ export function SlipView({ initial, pushKey }: { initial: SlipData; pushKey: str
                       {leg.market === "custom" ? leg.game : shortGame(leg.game)}
                       {leg.kickoff && ` · ${formatPt(new Date(leg.kickoff), { weekday: "short", hour: "numeric", minute: "2-digit" })}`}
                     </span>
-                    {leg.status === "moved" && leg.movedTo ? (
+                    {leg.dropsAt ? (
+                      <span className="pill pill-amber" title="Early game: this leg comes off unless the parlay is placed by then">
+                        Drops {formatPt(new Date(leg.dropsAt), { weekday: "short", hour: "numeric", minute: "2-digit" })}
+                      </span>
+                    ) : leg.status === "moved" && leg.movedTo ? (
                       <span className="pill pill-amber" title={`DraftKings main line is now ${leg.movedTo} (${formatAmerican(leg.livePrice)})`}>
                         Line now {leg.movedPoint == null ? leg.movedTo : leg.market === "spreads" && leg.movedPoint > 0 ? `+${leg.movedPoint}` : leg.movedPoint}
                       </span>

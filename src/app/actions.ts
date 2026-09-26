@@ -11,10 +11,11 @@ import { setInPool } from "@/lib/pool";
 import { seasonNow } from "@/lib/season";
 import { members, type Member } from "@/lib/sleeper";
 import { setSession, clearSession, pinMatches, requireMember, requireAdmin } from "@/lib/session";
-import { gameOdds, eventProps, dkMarkets, selectionLabel, gameLabel, lineKey, conflictFor, MARKET_LABEL } from "@/lib/odds";
+import { gameOdds, eventProps, dkMarkets, selectionLabel, gameLabel, lineKey, conflictFor, isPropMarket, MARKET_LABEL } from "@/lib/odds";
 import { recordLosers, expectedPickers, lockMessage } from "@/lib/jobs";
 import { notify } from "@/lib/notify";
-import { canEditLeg, editBlockedReason } from "@/lib/legrules";
+import { canEditLeg, editBlockedReason, isPickable, CUTOFF_MIN } from "@/lib/legrules";
+import { sweepEarlyLegs } from "@/lib/sweep";
 
 export type FormState = { error?: string; ok?: string };
 
@@ -94,8 +95,8 @@ type NewLeg = {
 
 async function saveLeg(t: Target, leg: NewLeg) {
   const now = await assertCanPick(t);
-  if (leg.commence_time && new Date(leg.commence_time) <= now.lock) {
-    throw new Error("That game kicks off before picks lock, so it can't go on the parlay.");
+  if (leg.commence_time && !isPickable(leg.commence_time)) {
+    throw new Error(`That game kicks off at ${formatPt(new Date(leg.commence_time))}. Picks on a game close ${CUTOFF_MIN} minutes before kickoff.`);
   }
   const legs = await getLegs(now.season, now.week);
   const clash = conflictFor(
@@ -108,7 +109,7 @@ async function saveLeg(t: Target, leg: NewLeg) {
     const who = (await members()).find((m) => m.userId === clash.userId)?.teamName ?? "Someone";
     const taken = legs.find((l) => l.user_id === clash.userId)?.selection ?? "that line";
     throw new Error(
-      leg.market.startsWith("player_")
+      isPropMarket(leg.market)
         ? `${who} already has ${taken}. Pick a different player or stat.`
         : `${who} already has ${taken} in this game. DraftKings won't take two ${(MARKET_LABEL[leg.market] ?? "").toLowerCase()} bets from one game.`,
     );
@@ -168,7 +169,7 @@ export async function pickBoardLine(input: {
     const target = await resolveTarget(input.forUser);
     const now = await seasonNow();
     let event = null;
-    if (input.market.startsWith("player_")) {
+    if (isPropMarket(input.market)) {
       event = (await eventProps(now, input.eventId))?.event ?? null;
     } else {
       event = (await gameOdds(now)).events.find((e) => e.id === input.eventId) ?? null;
@@ -213,10 +214,22 @@ export async function pickCustom(_: FormState, form: FormData): Promise<FormStat
   try {
     const target = await resolveTarget(str(form, "forUser"));
     const selection = str(form, "selection").slice(0, 120);
-    const game = str(form, "game").slice(0, 80);
-    const priceRaw = str(form, "price").replace(/\s/g, "");
+    const eventId = str(form, "eventId");
+    const priceRaw = str(form, "price").replace(/\s/g, "").replace("−", "-");
     if (selection.length < 3) return { error: "Describe the bet, e.g. \"Jaxon Smith-Njigba 80+ receiving yards\"." };
-    if (!game) return { error: "Add the game, e.g. \"Seahawks vs Cardinals\"." };
+    // The game comes from the dropdown (games still open for picks). A typed
+    // game is only a fallback for when the odds feed is down.
+    let game = str(form, "game").slice(0, 80);
+    let eventRef: string | null = null;
+    let commence: string | null = null;
+    if (eventId) {
+      const g = (await gameOdds(await seasonNow())).events.find((e) => e.id === eventId);
+      if (!g) return { error: "That game has started or is about to, so it can't go on the parlay. Pick another." };
+      game = gameLabel(g);
+      eventRef = g.id;
+      commence = g.commence_time;
+    }
+    if (!game) return { error: "Pick the game." };
     let price: number | null = null;
     if (priceRaw) {
       price = Number(priceRaw);
@@ -225,8 +238,8 @@ export async function pickCustom(_: FormState, form: FormData): Promise<FormStat
       }
     }
     await saveLeg(target, {
-      event_id: null,
-      commence_time: null,
+      event_id: eventRef,
+      commence_time: commence,
       game,
       market: "custom",
       selection,
@@ -300,6 +313,7 @@ export async function restoreLeg(token: string): Promise<PickResult> {
     if (parlay && parlay.status !== "open") return { error: "This week's parlay is already placed." };
     const legs = await getLegs(now.season, now.week);
     if (legs.some((l) => l.user_id === leg.user_id)) return { error: "That slot already has a new leg." };
+    if (leg.commence_time && !isPickable(leg.commence_time)) return { error: "That game is about to start, so it can't go back on." };
     const clash = conflictFor(
       { eventId: leg.event_id, market: leg.market, desc: leg.outcome_desc },
       legs.map((l) => ({ userId: l.user_id, eventId: l.event_id, market: l.market, desc: l.outcome_desc })),
@@ -389,6 +403,7 @@ export async function recomputeLoser(_: FormState, form: FormData): Promise<Form
 export async function placeBet(_: FormState, form: FormData): Promise<FormState> {
   try {
     const { me } = await requireMember();
+    await sweepEarlyLegs(); // anything past its cutoff is off before we record the bet
     const now = await seasonNow();
     const existing = await getParlay(now.season, now.week);
     if (existing && existing.status !== "open") {

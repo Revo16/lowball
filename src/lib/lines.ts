@@ -20,7 +20,7 @@ export const PROP_MARKETS = [
   "player_reception_yds",
 ] as const;
 
-export const MARKET_LABEL: Record<string, string> = {
+const BASE_LABEL: Record<string, string> = {
   h2h: "Moneyline",
   spreads: "Spread",
   totals: "Total",
@@ -29,7 +29,58 @@ export const MARKET_LABEL: Record<string, string> = {
   player_rush_yds: "Rushing yards",
   player_reception_yds: "Receiving yards",
   custom: "Custom",
+  team_total: "Team total",
+  // Everything else SportsGameOdds carries for DraftKings: player_<statID>
+  player_touchdowns: "Touchdowns",
+  player_firstTouchdown: "First TD",
+  player_lastTouchdown: "Last TD",
+  player_receiving_receptions: "Receptions",
+  player_receiving_longestReception: "Longest reception",
+  player_receiving_touchdowns: "Receiving TDs",
+  player_passing_touchdowns: "Passing TDs",
+  player_passing_completions: "Completions",
+  player_passing_attempts: "Pass attempts",
+  player_passing_interceptions: "Interceptions thrown",
+  player_passing_longestCompletion: "Longest completion",
+  player_rushing_attempts: "Rush attempts",
+  player_rushing_touchdowns: "Rushing TDs",
+  player_rushing_longestRush: "Longest rush",
+  player_rushing_receiving_yards: "Rush + rec yards",
+  player_passing_rushing_yards: "Pass + rush yards",
+  player_defense_sacks: "Sacks",
+  player_defense_combinedTackles: "Tackles + assists",
+  player_defense_soloTackles: "Solo tackles",
+  player_defense_interceptions: "Interceptions",
+  player_kicking_totalPoints: "Kicking points",
+  player_fieldGoals_made: "Field goals made",
+  player_extraPoints_kicksMade: "Extra points made",
 };
+
+/** "player_passing_longestCompletion" -> "Passing longest completion", for stats we haven't named. */
+function humanize(key: string) {
+  const words = key
+    .replace(/^player_/, "")
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .split(/[_\s]+/)
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
+export function marketLabel(key: string): string {
+  return BASE_LABEL[key] ?? humanize(key);
+}
+
+/** Label for any market key, including props we haven't named by hand. */
+export const MARKET_LABEL: Record<string, string> = new Proxy(BASE_LABEL, {
+  get: (t, k) => (typeof k === "string" ? t[k] ?? humanize(k) : undefined),
+});
+
+/** Player props and team totals: anything that isn't a spread, total, moneyline or typed-in bet. */
+export function isPropMarket(key: string) {
+  return key !== "custom" && !(GAME_MARKETS as readonly string[]).includes(key);
+}
 
 /** A single tappable line, flattened for search. */
 export type BoardLine = {
@@ -92,8 +143,14 @@ export function selectionLabel(market: string, o: Pick<Outcome, "name" | "descri
       return `${o.name} ${o.point}`;
     case "player_anytime_td":
       return `${o.description} anytime TD`;
+    case "team_total":
+      return `${shortTeam(o.description ?? "")} ${o.name} ${o.point} points`;
     default: {
-      const stat = MARKET_LABEL[market]?.toLowerCase() ?? market;
+      // "Passing TDs" -> "passing TDs": lowercase the first letter, keep acronyms.
+      const label = marketLabel(market);
+      const stat = label.charAt(0).toLowerCase() + label.slice(1);
+      // Yes/no props ("First TD"): no over/under number.
+      if (o.name === "Yes" || o.point == null) return `${o.description} ${stat}`;
       return `${o.description} ${o.name} ${o.point} ${stat}`;
     }
   }
@@ -171,8 +228,10 @@ export type LegLite = { userId: string; eventId: string | null; market: string; 
  * blocks this pick, if any.
  */
 export function conflictFor(c: { eventId: string | null; market: string; desc: string | null }, others: LegLite[]) {
-  if (!c.eventId) return null;
-  const isProp = c.market.startsWith("player_");
+  // Hand-typed bets can be anything (alt lines, specials), so they never clash.
+  if (!c.eventId || c.market === "custom") return null;
+  // Props clash only on the same player (or team, for team totals).
+  const isProp = c.market.startsWith("player_") || c.market === "team_total";
   return (
     others.find(
       (l) =>
@@ -204,4 +263,14 @@ export function dkParlayLink(links: Array<string | null | undefined>): string | 
   const ids = [...new Set(valid.flatMap(dkOutcomeIds))];
   const base = new URL(valid[0]);
   return `${base.origin}${base.pathname}?outcomes=${ids.join("+")}`;
+}
+
+/** Short tag for a leg's slot on The Slip and Bookie cards. */
+export function slotCode(market: string): string {
+  const fixed: Record<string, string> = {
+    spreads: "SPR", h2h: "ML", totals: "TOT", player_anytime_td: "TD", player_touchdowns: "TD",
+    player_firstTouchdown: "FTD", player_pass_yds: "PASS", player_rush_yds: "RUSH", player_reception_yds: "REC",
+    player_receiving_receptions: "CATCH", team_total: "TT", custom: "BET",
+  };
+  return fixed[market] ?? (isPropMarket(market) ? "PROP" : "BET");
 }

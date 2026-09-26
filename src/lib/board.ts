@@ -1,4 +1,5 @@
 import "server-only";
+import { sweepEarlyLegs } from "./sweep";
 import { getLegs, getParlay } from "./db";
 import { seasonNow } from "./season";
 import { expectedPickers } from "./jobs";
@@ -58,6 +59,7 @@ export async function boardLegs(all: Member[]) {
 }
 
 export async function boardData(me: Member, all: Member[], forUser?: string): Promise<BoardData> {
+  await sweepEarlyLegs().catch(() => null);
   const now = await seasonNow();
   // Anyone can enter a leg for a pool member who has none (the person placing
   // it often collects picks by text), or replace one someone else entered.

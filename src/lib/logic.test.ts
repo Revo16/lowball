@@ -157,3 +157,61 @@ test("leg edit rules", () => {
   assert.equal(canEditLeg(theirs, { ...open, isAdmin: true, locked: true }), true);
   assert.equal(canEditLeg(theirs, { ...open, isAdmin: true, placed: true }), false);
 });
+
+import { cutoffFor, isPickable, shouldDrop, isEarly } from "./legrules.ts";
+
+test("early-game cutoff: 15 minutes before kickoff", () => {
+  const tnf = "2026-10-01T17:15:00-07:00"; // Thu 5:15 PM PT
+  const lock = new Date("2026-10-03T20:00:00-07:00"); // Sat 8 PM PT
+  assert.equal(cutoffFor(tnf).toISOString(), new Date("2026-10-01T17:00:00-07:00").toISOString());
+  assert.equal(isPickable(tnf, new Date("2026-10-01T16:59:00-07:00")), true);
+  assert.equal(isPickable(tnf, new Date("2026-10-01T17:00:00-07:00")), false);
+  // Friday: Thursday's game is gone
+  assert.equal(isPickable(tnf, new Date("2026-10-02T12:00:00-07:00")), false);
+  // Drops at the cutoff unless placed; custom legs with no game never drop
+  assert.equal(shouldDrop(tnf, false, new Date("2026-10-01T17:01:00-07:00")), true);
+  assert.equal(shouldDrop(tnf, true, new Date("2026-10-01T17:01:00-07:00")), false);
+  assert.equal(shouldDrop(tnf, false, new Date("2026-10-01T16:00:00-07:00")), false);
+  assert.equal(shouldDrop(null, false, new Date("2026-10-05T00:00:00-07:00")), false);
+  // Early = cutoff before the Saturday lock
+  assert.equal(isEarly(tnf, lock), true);
+  assert.equal(isEarly("2026-10-04T10:00:00-07:00", lock), false); // Sunday 10 AM
+  assert.equal(isEarly(null, lock), false);
+});
+
+import { mapSgoEvent } from "./providers/sgo-map.ts";
+import { selectionLabel, marketLabel, isPropMarket } from "./lines.ts";
+
+test("SportsGameOdds: every DraftKings player prop comes through", () => {
+  const dk = (odds: string, extra: Record<string, string> = {}) => ({ byBookmaker: { draftkings: { odds, available: true, ...extra } } });
+  const ev = mapSgoEvent({
+    eventID: "x",
+    teams: { home: { names: { long: "Arizona Cardinals" } }, away: { names: { long: "Seattle Seahawks" } } },
+    status: { startsAt: "2026-10-01T17:15:00-07:00" },
+    players: { JSN_1_NFL: { name: "Jaxon Smith-Njigba" }, KW_1_NFL: { name: "Kenneth Walker III" } },
+    odds: {
+      a: { statID: "receiving_receptions", statEntityID: "JSN_1_NFL", periodID: "game", betTypeID: "ou", sideID: "over", ...dk("-120", { overUnder: "6.5" }) },
+      b: { statID: "firstTouchdown", statEntityID: "KW_1_NFL", periodID: "game", betTypeID: "yn", sideID: "yes", ...dk("+650") },
+      c: { statID: "touchdowns", statEntityID: "KW_1_NFL", periodID: "game", betTypeID: "yn", sideID: "yes", ...dk("+120") },
+      d: { statID: "touchdowns", statEntityID: "KW_1_NFL", periodID: "game", betTypeID: "ou", sideID: "over", ...dk("+700", { overUnder: "1.5" }) },
+      e: { statID: "points", statEntityID: "home", periodID: "game", betTypeID: "ou", sideID: "over", ...dk("-110", { overUnder: "23.5" }) },
+      f: { statID: "rushing+receiving_yards", statEntityID: "KW_1_NFL", periodID: "game", betTypeID: "ou", sideID: "under", ...dk("-115", { overUnder: "88.5" }) },
+      g: { statID: "rushing_yards", statEntityID: "KW_1_NFL", periodID: "1h", betTypeID: "ou", sideID: "over", ...dk("-110", { overUnder: "30.5" }) }, // first half: skipped
+    },
+  })!;
+  const markets = Object.fromEntries(ev.bookmakers[0].markets.map((m) => [m.key, m.outcomes]));
+  assert.deepEqual(Object.keys(markets).sort(), [
+    "player_anytime_td", "player_firstTouchdown", "player_receiving_receptions", "player_rushing_receiving_yards", "player_touchdowns", "team_total",
+  ]);
+  assert.equal(selectionLabel("player_receiving_receptions", markets.player_receiving_receptions[0]), "Jaxon Smith-Njigba Over 6.5 receptions");
+  assert.equal(selectionLabel("player_firstTouchdown", markets.player_firstTouchdown[0]), "Kenneth Walker III first TD");
+  assert.equal(selectionLabel("player_touchdowns", markets.player_touchdowns[0]), "Kenneth Walker III Over 1.5 touchdowns");
+  assert.equal(selectionLabel("team_total", markets.team_total[0]), "Cardinals Over 23.5 points");
+  assert.equal(marketLabel("player_rushing_receiving_yards"), "Rush + rec yards");
+  assert.equal(marketLabel("player_defense_someNewStat"), "Defense some new stat");
+  assert.equal(isPropMarket("team_total"), true);
+  assert.equal(isPropMarket("spreads"), false);
+  assert.equal(isPropMarket("custom"), false);
+  // Two hand-typed bets on one game never clash
+  assert.equal(conflictFor({ eventId: "g1", market: "custom", desc: null }, [{ userId: "a", eventId: "g1", market: "custom", desc: null }]), null);
+});

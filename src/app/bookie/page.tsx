@@ -3,13 +3,10 @@ import { BottomNav } from "@/components/nav";
 import { AppBar, Avatar } from "@/components/ui";
 import { ActionForm, CopyButton, Submit } from "@/components/client";
 import { placeBet, nudge, pingChat } from "@/app/actions";
-import { canEditLeg } from "@/lib/legrules";
+import { canEditLeg, cutoffFor, isEarly } from "@/lib/legrules";
+import { sweepEarlyLegs } from "@/lib/sweep";
 import { LegDeck, type DeckLeg } from "@/components/LegDeck";
 
-const SLOT: Record<string, string> = {
-  spreads: "SPR", h2h: "ML", totals: "TOT", player_anytime_td: "TD",
-  player_pass_yds: "PASS", player_rush_yds: "RUSH", player_reception_yds: "REC", custom: "BET",
-};
 const shortGame = (game: string) => game.split(" @ ").map((t) => t.trim().split(" ").slice(-1)[0]).join(" @ ");
 import { requireMember } from "@/lib/session";
 import { seasonNow } from "@/lib/season";
@@ -18,7 +15,7 @@ import { expectedPickers, slipText } from "@/lib/jobs";
 import { config } from "@/lib/config";
 import { formatAmerican } from "@/lib/math";
 import { formatPt } from "@/lib/weeks";
-import { dkParlayLink, oddsStatus } from "@/lib/odds";
+import { dkParlayLink, oddsStatus, slotCode } from "@/lib/odds";
 import { avatarUrl } from "@/lib/sleeper";
 import { pushEnabled, subscribedUserIds } from "@/lib/push";
 
@@ -30,6 +27,7 @@ export const dynamic = "force-dynamic";
 
 export default async function BookiePage() {
   const { me, all } = await requireMember();
+  await sweepEarlyLegs().catch(() => null);
   const now = await seasonNow();
   const [slip, parlay, pickers, feed, notifyOn] = await Promise.all([
     slipText(now.season, now.week),
@@ -53,6 +51,12 @@ export default async function BookiePage() {
   const parlayLink = dkParlayLink(inLink.map((l) => l.dk_link));
   const finalized = now.locked || (pickers.length > 0 && missing.length === 0);
   const canNudge = !placed && missing.length > 0;
+  // Legs on games before the Saturday lock (Thursday night) drop at their
+  // game's cutoff unless the parlay is placed by then.
+  const early = placed ? [] : legs.filter((l) => isEarly(l.commence_time, now.lock));
+  const firstCutoff = early.length
+    ? early.map((l) => cutoffFor(l.commence_time!)).sort((a, b) => a.getTime() - b.getTime())[0]
+    : null;
 
   // One card per leg. If you can touch a leg you get both swipes (right to
   // change, left to remove): your own leg until the lock, any leg someone
@@ -66,7 +70,7 @@ export default async function BookiePage() {
       userId: l.user_id,
       teamName: owner?.teamName ?? "Someone",
       avatar: owner ? avatarUrl(owner.avatar) : null,
-      slot: SLOT[l.market] ?? "BET",
+      slot: slotCode(l.market),
       selection: l.selection,
       where: [l.market === "custom" ? l.game : shortGame(l.game), kickoff].filter(Boolean).join(" · "),
       price: formatAmerican(l.price),
@@ -161,6 +165,12 @@ export default async function BookiePage() {
           )}
 
           {legs.length === 0 && <p className="fine">No legs yet.</p>}
+          {firstCutoff && (
+            <p className="notice">
+              {early.length} leg{early.length === 1 ? " is" : "s are"} on an early game ({early.map((l) => byId.get(l.user_id)?.teamName ?? "someone").join(", ")}).
+              Place it and tap I placed it by <b>{formatPt(firstCutoff)} PT</b>, 15 minutes before kickoff, or {early.length === 1 ? "that leg comes" : "those legs come"} off the slip.
+            </p>
+          )}
           <p className="fine">
             Est. {formatAmerican(slip.combo.american)} · ${slip.stake} stake.{" "}
             {byHand.length > 0

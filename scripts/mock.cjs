@@ -29,12 +29,16 @@ const GAMES = [
   G("cccccccccccccccccccccccccccccccc", "2026-09-27T17:00:00Z", "Detroit Lions", "Green Bay Packers", [-3, -108, -112], [-155, 130], [48.5, -105, -115]),
   G("dddddddddddddddddddddddddddddddd", "2026-09-28T00:20:00Z", "Philadelphia Eagles", "Dallas Cowboys", [-4.5, -110, -110], [-205, 170], [46.5, -112, -108]),
   G("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", "2026-09-29T00:15:00Z", "Cincinnati Bengals", "Baltimore Ravens", [3, -105, -115], [135, -160], [49.5, -110, -110]),
+  // An "early" game (think Thursday night) kicking off MOCK_EARLY_MIN minutes
+  // after the server starts, so the 15-minute cutoff and drop can be tested.
+  G("ffffffffffffffffffffffffffffffff", new Date(Math.ceil((Date.now() + Number(process.env.MOCK_EARLY_MIN || 90) * 60000) / 60000) * 60000).toISOString().replace(".000Z", "Z"), "Pittsburgh Steelers", "Cleveland Browns", [-1.5, -110, -110], [-120, 100], [38.5, -110, -110]),
 ];
 const PLAYERS = {
   aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa: [["Kenneth Walker III", "rush", 64.5, 105], ["Jaxon Smith-Njigba", "rec", 74.5, 140], ["Trey McBride", "rec", 58.5, 190], ["Kyler Murray", "pass", 231.5, 900]],
   bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb: [["Josh Allen", "pass", 248.5, 150], ["James Cook", "rush", 71.5, -105], ["Travis Kelce", "rec", 49.5, 175], ["Patrick Mahomes", "pass", 262.5, 400]],
   cccccccccccccccccccccccccccccccc: [["Jahmyr Gibbs", "rush", 78.5, -140], ["Amon-Ra St. Brown", "rec", 82.5, 110], ["Jordan Love", "pass", 244.5, 600], ["Josh Jacobs", "rush", 69.5, 115]],
   dddddddddddddddddddddddddddddddd: [["Saquon Barkley", "rush", 92.5, -130], ["A.J. Brown", "rec", 71.5, 130], ["CeeDee Lamb", "rec", 84.5, 105], ["Dak Prescott", "pass", 255.5, 800]],
+  ffffffffffffffffffffffffffffffff: [["Jaylen Warren", "rush", 55.5, 160], ["George Pickens", "rec", 66.5, 170]],
   eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee: [["Ja'Marr Chase", "rec", 88.5, -105], ["Derrick Henry", "rush", 86.5, -165], ["Joe Burrow", "pass", 271.5, 700], ["Lamar Jackson", "rush", 54.5, 300]],
 };
 
@@ -132,7 +136,24 @@ function sgoEvent(g) {
     put(stat, pid, "ou", "over", { odds: sgn(over), overUnder: String(line) });
     put(stat, pid, "ou", "under", { odds: "-115", overUnder: String(line) });
     put("touchdowns", pid, "yn", "yes", { odds: sgn(td) });
+    // Props beyond the original four, as SportsGameOdds sends them.
+    put("firstTouchdown", pid, "yn", "yes", { odds: sgn(td * 4 + 300) });
+    put("touchdowns", pid, "ou", "over", { odds: sgn(td * 3 + 400), overUnder: "1.5" });
+    if (kind === "rec") {
+      put("receiving_receptions", pid, "ou", "over", { odds: "-125", overUnder: "5.5" });
+      put("receiving_receptions", pid, "ou", "under", { odds: "+100", overUnder: "5.5" });
+    }
+    if (kind === "pass") {
+      put("passing_touchdowns", pid, "ou", "over", { odds: "-150", overUnder: "1.5" });
+      put("passing_touchdowns", pid, "ou", "under", { odds: "+120", overUnder: "1.5" });
+    }
+    if (kind === "rush") {
+      put("rushing+receiving_yards", pid, "ou", "over", { odds: "-115", overUnder: String(line + 22) });
+      put("rushing+receiving_yards", pid, "ou", "under", { odds: "-115", overUnder: String(line + 22) });
+    }
   }
+  put("points", "home", "ou", "over", { odds: "-110", overUnder: String(Math.round(g.tot[0] / 2) + 1.5) });
+  put("points", "home", "ou", "under", { odds: "-110", overUnder: String(Math.round(g.tot[0] / 2) + 1.5) });
   return {
     eventID: "SGO" + g.id.slice(0, 8),
     teams: { home: { names: { long: g.home } }, away: { names: { long: g.away } } },

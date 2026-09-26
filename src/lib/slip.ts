@@ -1,13 +1,14 @@
 import "server-only";
+import { sweepEarlyLegs } from "./sweep";
 import { config } from "./config";
 import { getLegs, getLosers, getParlay, getParlays, type Leg } from "./db";
 import { liveBottom, avatarUrl, type Member } from "./sleeper";
 import { seasonNow } from "./season";
 import { expectedPickers, stakeFor } from "./jobs";
 import { americanToDecimal, parlayOdds, payout } from "./math";
-import { gameOdds, propSlate, dkMarkets, currentPrice, MARKET_LABEL, type Market, type OddsWindow } from "./odds";
+import { gameOdds, propSlate, dkMarkets, currentPrice, isPropMarket, MARKET_LABEL, type Market, type OddsWindow } from "./odds";
 import { venmoPayLink } from "./venmo";
-import { canEditLeg } from "./legrules";
+import { canEditLeg, cutoffFor, isEarly } from "./legrules";
 
 // Everything The Slip page shows, as plain JSON. The page renders it once on
 // the server and then re-fetches it every 30 seconds.
@@ -25,6 +26,8 @@ export type SlipLeg = {
   /** DraftKings' new main-line number when it moved off the picked one. */
   movedPoint: number | null;
   enteredBy: string | null;
+  /** Early game: when it comes off the slip if the parlay isn't placed. */
+  dropsAt: string | null;
 };
 
 export type SlipRow = { userId: string; teamName: string; username: string; avatar: string | null; isMe: boolean; leg: SlipLeg | null };
@@ -83,7 +86,7 @@ async function livePrices(legs: Leg[], w: OddsWindow) {
     if (d && (!at || d < at)) at = d;
   };
 
-  if (legs.some((l) => l.event_id && !l.market.startsWith("player_"))) {
+  if (legs.some((l) => l.event_id && !isPropMarket(l.market) && l.market !== "custom")) {
     try {
       const g = await gameOdds(w);
       for (const e of g.events) byEvent.set(e.id, dkMarkets(e));
@@ -93,7 +96,7 @@ async function livePrices(legs: Leg[], w: OddsWindow) {
       note = (err as Error).message;
     }
   }
-  if (legs.some((l) => l.event_id && l.market.startsWith("player_"))) {
+  if (legs.some((l) => l.event_id && isPropMarket(l.market))) {
     const p = await propSlate(w);
     if (p.error) note = p.error;
     for (const e of p.events) byEvent.set(e.id, [...(byEvent.get(e.id) ?? []), ...dkMarkets(e)]);
@@ -104,6 +107,7 @@ async function livePrices(legs: Leg[], w: OddsWindow) {
 }
 
 export async function slipData(me: Member, all: Member[]): Promise<SlipData> {
+  await sweepEarlyLegs().catch(() => null);
   const now = await seasonNow();
   const [legs, losers, parlay, parlays, pickers, stake] = await Promise.all([
     getLegs(now.season, now.week),
@@ -136,6 +140,7 @@ export async function slipData(me: Member, all: Member[]): Promise<SlipData> {
       movedTo: null as string | null,
       movedPoint: null as number | null,
       enteredBy: l.entered_by ? byId.get(l.entered_by)?.teamName ?? "someone" : null,
+      dropsAt: !frozen && isEarly(l.commence_time, now.lock) ? cutoffFor(l.commence_time!).toISOString() : null,
     };
     if (l.market === "custom" || !l.event_id) return { ...base, status: "custom" };
     if (frozen) return { ...base, status: "frozen" };

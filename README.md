@@ -70,7 +70,9 @@ Each message is sent once per week even if a cron retries. To trigger one by han
 ## Rules the app enforces
 
 - One leg per person per week. Picking again replaces your leg until lock.
-- Only games that kick off after the Saturday lock are listed, so they can actually be bet.
+- **Early games (Thursday night, Saturday, London):** any game can go on the slip until 15 minutes before its kickoff. If the parlay isn't placed (and marked I placed it) by then, legs on that game come off the slip and their owners get a push to pick again. The Slip marks those legs "Drops Thu 5:00 PM", Bookie warns whoever is placing it, and a cron runs right after Thursday's and Sunday morning's cutoffs (the app also checks whenever anyone opens it).
+- **Adding a bet by hand:** pick the game from a dropdown (only games still open), and the odds have a −/+ switch since phone number pads have no minus key.
+- **Props:** every full-game DraftKings player prop SportsGameOdds carries (receptions, passing TDs, first TD, 2+ TDs, rush + rec yards, tackles, kicking and so on) plus team totals, not just the four originals. `node scripts/check-odds.mjs` lists every prop type the feed has this week.
 - Two people can't take the same market in the same game (both sides of a spread, say), since DraftKings won't take that parlay. Different markets in the same game are allowed with an SGP warning.
 - Ties for last: everyone tied owes, and the stake scales up.
 - Stat corrections or pool changes: anyone can re-pull a week's loser from the Bookie tab. Anyone who already paid stays on the books.

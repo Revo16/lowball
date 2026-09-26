@@ -42,6 +42,18 @@ console.log("  anytime TD   :", count(/^touchdowns-.+-game-(yn-yes|ou-over)$/));
 console.log("  passing yds  :", count(/^passing_yards-.+-game-ou-/));
 console.log("  rushing yds  :", count(/^rushing_yards-.+-game-ou-/));
 console.log("  receiving yds:", count(/^receiving_yards-.+-game-ou-/));
+
+// Every player prop type DraftKings has on this game, full game only. The app
+// now shows all of these (each statID becomes its own market).
+const propTypes = new Map();
+for (const o of dk) {
+  const ent = o.statEntityID ?? "";
+  if (["home", "away", "all"].includes(ent) || (o.periodID ?? "game") !== "game") continue;
+  const k = `${o.statID} (${o.betTypeID})`;
+  propTypes.set(k, (propTypes.get(k) ?? 0) + 1);
+}
+console.log(`\nAll DraftKings player prop types on this game (${propTypes.size}):`);
+for (const [k, n] of [...propTypes].sort((a, b) => b[1] - a[1])) console.log(`  ${k.padEnd(40)} ${n}`);
 const sample = dk.find((o) => /^receiving_yards-/.test(o.oddID ?? "")) ?? dk[0];
 console.log("\nSample odd (the app reads statID, statEntityID, betTypeID, sideID and byBookmaker.draftkings):");
 console.log(JSON.stringify({ ...sample, byBookmaker: { draftkings: sample.byBookmaker.draftkings } }, null, 2));

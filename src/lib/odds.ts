@@ -1,6 +1,7 @@
 import "server-only";
+import { isPickable } from "./legrules";
 import { db } from "./db";
-import { flatten, gameKey, PROP_MARKETS, GAME_MARKETS, type BoardLine, type OddsEvent } from "./lines";
+import { flatten, gameKey, isPropMarket, PROP_MARKETS, GAME_MARKETS, type BoardLine, type OddsEvent } from "./lines";
 import { espnWeek } from "./providers/espn";
 import { sgoSlate } from "./providers/sgo";
 
@@ -77,9 +78,15 @@ async function cached<T>(key: string, ttlMin: number, load: () => Promise<T>): P
   }
 }
 
+// A game is on the board until 15 minutes before kickoff (Thursday games
+// included), through the end of the week.
 function inWindow(e: OddsEvent, w: OddsWindow) {
-  const t = new Date(e.commence_time).getTime();
-  return t > w.lock.getTime() && t < w.windowEnd.getTime();
+  return isPickable(e.commence_time) && new Date(e.commence_time).getTime() < w.windowEnd.getTime();
+}
+
+/** Tuesday 00:00 PT that opens the week. */
+function weekStart(w: OddsWindow) {
+  return new Date(w.windowEnd.getTime() - 7 * 86_400_000);
 }
 
 function onlyMarkets(e: OddsEvent, keys: readonly string[]): OddsEvent {
@@ -143,7 +150,7 @@ async function oddsApiProps(w: OddsWindow): Promise<OddsEvent[]> {
   // Listing events is free; props cost 1 credit per market per game.
   const list = await cached(`oddsapi:events:${w.season}:${w.week}`, 60, () => {
     const url = new URL(`${ODDSAPI}/events`);
-    url.searchParams.set("commenceTimeFrom", w.lock.toISOString().replace(/\.\d{3}Z$/, "Z"));
+    url.searchParams.set("commenceTimeFrom", new Date().toISOString().replace(/\.\d{3}Z$/, "Z"));
     url.searchParams.set("commenceTimeTo", w.windowEnd.toISOString().replace(/\.\d{3}Z$/, "Z"));
     return oddsApiCall<Array<{ id: string; commence_time: string; home_team: string; away_team: string }>>(url);
   });
@@ -166,7 +173,7 @@ async function oddsApiProps(w: OddsWindow): Promise<OddsEvent[]> {
 
 export type PropSlate = { events: OddsEvent[]; fetchedAt: Date | null; stale: boolean; error: string | null };
 
-/** Every DraftKings player prop for games after the lock. */
+/** Every DraftKings player prop for games still open for picks. */
 export async function propSlate(w: OddsWindow): Promise<PropSlate> {
   const source = propsSource();
   if (!source) return { events: [], fetchedAt: null, stale: false, error: null };
@@ -175,7 +182,7 @@ export async function propSlate(w: OddsWindow): Promise<PropSlate> {
       const ttl = await sgoRefreshMinutes();
       const r = await cached(`sgo:${w.season}:${w.week}`, ttl, async () => {
         if (!Number.isFinite(ttl)) throw new Error("This month's free SportsGameOdds allowance is used up");
-        const s = await sgoSlate(sgoKey(), w.lock, w.windowEnd);
+        const s = await sgoSlate(sgoKey(), weekStart(w), w.windowEnd);
         await recordSgoUsage(s.objects, s.events.length);
         return s.events;
       });
@@ -188,7 +195,7 @@ export async function propSlate(w: OddsWindow): Promise<PropSlate> {
   }
 }
 
-/** Spread, total and moneyline for every game after the lock. */
+/** Spread, total and moneyline for every game still open for picks. */
 export async function gameOdds(w: OddsWindow) {
   try {
     const r = await cached(`espn:${w.season}:${w.week}`, ESPN_TTL, () => espnWeek(w.season, w.week));
@@ -224,7 +231,8 @@ export async function eventProps(w: OddsWindow, eventId: string) {
 /** Every prop line, flattened for search. */
 export async function allProps(w: OddsWindow): Promise<{ lines: BoardLine[]; fetchedAt: Date | null; error: string }> {
   const p = await propSlate(w);
-  return { lines: p.events.flatMap((e) => flatten(e, PROP_MARKETS)), fetchedAt: p.fetchedAt, error: p.error ?? "" };
+  // Every non-game market the feed has for DraftKings: all player props, team totals.
+  return { lines: p.events.flatMap((e) => flatten(e).filter((l) => isPropMarket(l.market))), fetchedAt: p.fetchedAt, error: p.error ?? "" };
 }
 
 /** For the bookie console. */

@@ -1,12 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ActionForm, Countdown, Submit } from "@/components/client";
 import { AppBar } from "@/components/ui";
 import { pickBoardLine, pickCustom } from "@/app/actions";
+import { cutoffFor, isEarly } from "@/lib/legrules";
 import type { BoardData, BoardGame, BoardLeg } from "@/lib/board";
-import { conflictFor, MARKET_LABEL, shortTeam, type BoardLine } from "@/lib/lines";
+import { conflictFor, isPropMarket, MARKET_LABEL, shortTeam, type BoardLine } from "@/lib/lines";
 import { formatAmerican } from "@/lib/math";
 import { formatPt } from "@/lib/weeks";
 
@@ -19,7 +20,16 @@ const CHIPS: Array<{ id: string; label: string }> = [
   { id: "player_pass_yds", label: "Pass yds" },
   { id: "player_rush_yds", label: "Rush yds" },
   { id: "player_reception_yds", label: "Rec yds" },
+  { id: "player_receiving_receptions", label: "Receptions" },
+  { id: "more", label: "More props" },
 ];
+const CHIP_IDS = new Set(CHIPS.map((c) => c.id));
+/** A line matches a chip; "More props" is every prop without its own chip. */
+function inChip(market: string, chip: string) {
+  if (chip === "all") return true;
+  if (chip === "more") return isPropMarket(market) && !CHIP_IDS.has(market);
+  return market === chip;
+}
 const MAX_RESULTS = 80;
 
 function norm(s: string) {
@@ -33,8 +43,9 @@ function haystack(l: BoardLine) {
     l.market === "totals" ? "total points" :
     l.market === "player_reception_yds" ? "rec receiving" :
     l.market === "player_rush_yds" ? "rush rushing" :
-    l.market === "player_pass_yds" ? "pass passing" : "spread";
-  return norm(`${l.label} ${l.game} ${extra}`);
+    l.market === "player_pass_yds" ? "pass passing" :
+    l.market === "spreads" ? "spread" : "";
+  return norm(`${l.label} ${l.game} ${extra} ${MARKET_LABEL[l.market]}`);
 }
 
 type Toast = { kind: "ok" | "error"; text: string } | null;
@@ -57,7 +68,7 @@ export function SearchView({ initial }: { initial: BoardData }) {
   const canPick = initial.canPick;
 
   const q = norm(query).trim();
-  const needProps = q.length >= 2 || chip.startsWith("player_") || gameFilter != null;
+  const needProps = q.length >= 2 || chip.startsWith("player_") || chip === "more" || gameFilter != null;
 
   const refreshLegs = useCallback(async () => {
     try {
@@ -129,12 +140,15 @@ export function SearchView({ initial }: { initial: BoardData }) {
     const tokens = q.split(/\s+/).filter(Boolean);
     const matched = pool.filter(
       (l) =>
-        (chip === "all" || l.market === chip) &&
+        inChip(l.market, chip) &&
         (!gameFilter || l.eventId === gameFilter) &&
         tokens.every((t) => haystack(l).includes(t)),
     );
     const order = new Map(initial.games.map((g, i) => [g.eventId, i]));
-    const marketOrder = (m: string) => CHIPS.findIndex((c) => c.id === m);
+    const marketOrder = (m: string) => {
+      const i = CHIPS.findIndex((c) => c.id === m);
+      return i < 0 ? 99 : i;
+    };
     matched.sort(
       (a, b) =>
         (order.get(a.eventId) ?? 99) - (order.get(b.eventId) ?? 99) ||
@@ -237,6 +251,7 @@ export function SearchView({ initial }: { initial: BoardData }) {
             <GameCard
               key={g.eventId}
               game={g}
+              lock={initial.lock}
               lineState={lineState}
               pending={pending}
               disabled={!canPick}
@@ -301,16 +316,24 @@ export function SearchView({ initial }: { initial: BoardData }) {
               <label htmlFor="selection">The bet</label>
               <input id="selection" name="selection" placeholder="Kenneth Walker III 70+ rushing yards" maxLength={120} required />
             </div>
-            <div className="row">
-              <div className="field">
-                <label htmlFor="game">Game</label>
+            <div className="field">
+              <label htmlFor="game">Game</label>
+              {initial.games.length > 0 ? (
+                // Only games still open for picks (15+ minutes before kickoff), so
+                // Thursday's game is gone by Friday.
+                <select id="game" name="eventId" required defaultValue="">
+                  <option value="" disabled>Pick a game</option>
+                  {initial.games.map((g) => (
+                    <option key={g.eventId} value={g.eventId}>
+                      {g.away.split(" ").slice(-1)[0]} @ {g.home.split(" ").slice(-1)[0]} · {formatPt(new Date(g.commence))}
+                    </option>
+                  ))}
+                </select>
+              ) : (
                 <input id="game" name="game" placeholder="Seahawks @ Cardinals" maxLength={80} required />
-              </div>
-              <div className="field narrow">
-                <label htmlFor="price">Odds</label>
-                <input id="price" name="price" inputMode="numeric" placeholder="+135" />
-              </div>
+              )}
             </div>
+            <OddsField />
             <Submit>Put it on the slip</Submit>
           </ActionForm>
         </details>
@@ -332,9 +355,10 @@ export function SearchView({ initial }: { initial: BoardData }) {
 }
 
 function GameCard({
-  game, lineState, pending, disabled, onPick, onProps,
+  game, lock, lineState, pending, disabled, onPick, onProps,
 }: {
   game: BoardGame;
+  lock: string;
   lineState: (l: BoardLine) => { mine: boolean; takenBy: string | null };
   pending: string | null;
   disabled: boolean;
@@ -375,7 +399,12 @@ function GameCard({
   return (
     <section className="game" aria-label={game.game}>
       <div className="game-head">
-        <span className="small muted">{formatPt(new Date(game.commence))}</span>
+        <span className="small muted">
+          {formatPt(new Date(game.commence))}
+          {isEarly(game.commence, new Date(lock)) && (
+            <span className="early-note"> · Early game: drops at {formatPt(cutoffFor(game.commence), { weekday: undefined })} unless placed</span>
+          )}
+        </span>
         <span className="game-cols" aria-hidden="true">
           <span>Spread</span><span>Total</span><span>Money</span>
         </span>
@@ -397,5 +426,56 @@ function GameCard({
         <button type="button" className="btn-link" onClick={onProps}>Player props →</button>
       </div>
     </section>
+  );
+}
+
+/** Odds with a +/− switch: phone number pads have no minus key. */
+function OddsField() {
+  const [sign, setSign] = useState<"-" | "+">("-");
+  const [digits, setDigits] = useState("");
+  const box = useRef<HTMLInputElement>(null);
+  // Clear along with the rest of the form after a successful add.
+  useEffect(() => {
+    const form = box.current?.form;
+    if (!form) return;
+    const clear = () => { setDigits(""); setSign("-"); };
+    form.addEventListener("reset", clear);
+    return () => form.removeEventListener("reset", clear);
+  }, []);
+  return (
+    <div className="field">
+      <label htmlFor="price-digits">Odds (optional)</label>
+      <div className="odds-field">
+        <div className="sign-toggle" role="radiogroup" aria-label="Odds sign">
+          {(["-", "+"] as const).map((x) => (
+            <button
+              key={x}
+              type="button"
+              role="radio"
+              aria-checked={sign === x}
+              className={sign === x ? "on" : ""}
+              onClick={() => setSign(x)}
+            >
+              {x === "-" ? "−" : "+"}
+            </button>
+          ))}
+        </div>
+        <input
+          ref={box}
+          id="price-digits"
+          inputMode="numeric"
+          placeholder={sign === "-" ? "110" : "135"}
+          value={digits}
+          onChange={(e) => {
+            const raw = e.target.value.trim();
+            // Typing or pasting "-115" / "+240" sets the sign too.
+            if (raw.startsWith("-") || raw.startsWith("−")) setSign("-");
+            else if (raw.startsWith("+")) setSign("+");
+            setDigits(raw.replace(/[^0-9]/g, "").slice(0, 6));
+          }}
+        />
+      </div>
+      <input type="hidden" name="price" value={digits ? `${sign}${digits}` : ""} />
+    </div>
   );
 }

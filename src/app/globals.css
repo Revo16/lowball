@@ -819,3 +819,11 @@ details.record-row > summary { cursor: pointer; }
 }
 .opt-red:active { box-shadow: 0 1px 0 #a3262b; }
 .opt-wrap-bottom { margin: 18px 0 4px; }
+.early-note { color: var(--amber); font-weight: 700; }
+/* Odds with a +/− switch (manual bet) */
+.odds-field { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px; align-items: stretch; }
+.sign-toggle { display: inline-flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; background: var(--card-2); }
+.sign-toggle button {
+  width: 44px; border: 0; background: none; font: inherit; font-size: 20px; font-weight: 800; color: var(--muted); cursor: pointer;
+}
+.sign-toggle button.on { background: var(--teal-2); color: #fff; }
