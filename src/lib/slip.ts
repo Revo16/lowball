@@ -31,7 +31,20 @@ export type SlipLeg = {
   dropsAt: string | null;
 };
 
-export type SlipRow = { userId: string; teamName: string; username: string; avatar: string | null; isMe: boolean; leg: SlipLeg | null };
+export type SlipRow = {
+  userId: string;
+  teamName: string;
+  username: string;
+  avatar: string | null;
+  isMe: boolean;
+  leg: SlipLeg | null;
+  /** Filled: the viewer may change (tap) or remove (swipe left) it. See lib/legrules. */
+  canEdit: boolean;
+  /** Empty: the viewer may add a pick here (their own before the lock, anyone else's until placed). */
+  canAdd: boolean;
+  /** Where tapping goes: Find a bet for yourself, or picking for them. */
+  href: string;
+};
 
 export type SlipData = {
   week: number;
@@ -64,7 +77,7 @@ export type SlipData = {
     tied: boolean;
     /** The week they fund (week + 1) and who placed it. Null bookie = not placed yet. */
     funds: number;
-    bookie: { teamName: string; venmo: string | null } | null;
+    bookie: { teamName: string; avatar: string | null; venmo: string | null } | null;
     venmoUrl: string | null;
   }>;
   liveLast: { teamName: string; points: number } | null;
@@ -76,6 +89,8 @@ export type SlipData = {
   /** The admin, for "ask them to add you". */
   payTo: { teamName: string | null };
   placedBy: string | null;
+  /** This week's bookie: whoever tapped I placed it. Null until then. */
+  bookie: { userId: string; teamName: string; avatar: string | null; isMe: boolean; venmo: string | null } | null;
   amount: number;
   parlayNote: string | null;
   me: { userId: string; teamName: string; avatar: string | null; isAdmin: boolean; inPool: boolean; picks: boolean; canRemove: boolean };
@@ -170,7 +185,21 @@ export async function slipData(me: Member, all: Member[]): Promise<SlipData> {
   const people = [...pickers];
   for (const l of legs) if (!people.some((p) => p.userId === l.user_id) && byId.has(l.user_id)) people.push(byId.get(l.user_id)!);
   const rows: SlipRow[] = people
-    .map((m) => ({ userId: m.userId, teamName: m.teamName, username: m.username, avatar: avatarUrl(m.avatar), isMe: m.userId === me.userId, leg: legByUser.has(m.userId) ? toSlipLeg(legByUser.get(m.userId)!) : null }))
+    .map((m) => {
+      const isMe = m.userId === me.userId;
+      const l = legByUser.get(m.userId);
+      return {
+        userId: m.userId,
+        teamName: m.teamName,
+        username: m.username,
+        avatar: avatarUrl(m.avatar),
+        isMe,
+        leg: l ? toSlipLeg(l) : null,
+        canEdit: !!l && canEditLeg({ userId: m.userId, enteredBy: l.entered_by }, { viewerId: me.userId, isAdmin: me.isAdmin, locked: now.locked, placed: frozen }),
+        canAdd: !l && !frozen && (isMe ? !now.locked || me.isAdmin : true),
+        href: isMe ? "/search" : `/search?for=${m.userId}`,
+      };
+    })
     .sort((a, b) => {
       if (!a.leg !== !b.leg) return a.leg ? -1 : 1;
       if (!a.leg || !b.leg) return a.isMe !== b.isMe ? (a.isMe ? -1 : 1) : a.teamName.localeCompare(b.teamName);
@@ -221,7 +250,7 @@ export async function slipData(me: Member, all: Member[]): Promise<SlipData> {
         points: Number(l.points),
         tied: l.tied,
         funds: l.week + 1,
-        bookie: bookieId ? { teamName: byId.get(bookieId)?.teamName ?? "The bookie", venmo } : null,
+        bookie: bookieId ? { teamName: byId.get(bookieId)?.teamName ?? "The bookie", avatar: avatarUrl(byId.get(bookieId)?.avatar ?? null), venmo } : null,
         venmoUrl: venmo ? venmoPayLink({ to: venmo, amount: config.loserAmount, note: `Lowball Week ${l.week + 1} parlay 🧻` }) : null,
       };
     });
@@ -263,6 +292,15 @@ export async function slipData(me: Member, all: Member[]): Promise<SlipData> {
     },
     payTo: { teamName: admin?.teamName ?? null },
     placedBy: parlay?.placed_by ? byId.get(parlay.placed_by)?.teamName ?? null : null,
+    bookie: parlay?.placed_by && parlay.status !== "open"
+      ? {
+          userId: parlay.placed_by,
+          teamName: byId.get(parlay.placed_by)?.teamName ?? "Someone",
+          avatar: avatarUrl(byId.get(parlay.placed_by)?.avatar ?? null),
+          isMe: parlay.placed_by === me.userId,
+          venmo: handles.get(parlay.placed_by) ?? null,
+        }
+      : null,
     amount: config.loserAmount,
     parlayNote: parlay?.note ?? null,
     leagueSize: all.length,

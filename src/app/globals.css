@@ -835,3 +835,43 @@ details.record-row > summary { cursor: pointer; }
 .season-won > div { display: grid; }
 .season-won > div:last-child { text-align: right; justify-items: end; }
 .season-won .num { font-size: 24px; line-height: 1.1; }
+
+/* ---------- Slip cards: raised = tap to change/add, red edge = swipe left to remove ---------- */
+.legs-hint { margin: -4px 2px 2px; font-size: 12px; color: var(--muted); display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
+.st { position: relative; transition: transform 0.12s ease, box-shadow 0.12s ease, max-height 0.22s ease 0.12s, opacity 0.2s ease 0.12s, margin 0.22s ease 0.12s; max-height: 260px; }
+.st-front { position: relative; background: inherit; touch-action: pan-y; user-select: none; -webkit-user-select: none; }
+.st-front.anim { transition: transform 0.22s ease; }
+.st-front:focus-visible { outline: 3px solid var(--focus); outline-offset: -3px; }
+/* Raised like a button when you can act on it */
+.leg.st-tap {
+  cursor: pointer;
+  transform: translateY(-1px);
+  box-shadow: 0 3px 0 #c9c5bd, 0 6px 14px rgb(29 37 48 / 0.10);
+}
+.leg.st-tap.st-pressed { transform: translateY(2px); box-shadow: 0 1px 0 #c9c5bd, 0 2px 4px rgb(29 37 48 / 0.08); }
+/* Flat when you can't */
+.leg:not(.st-tap) { box-shadow: none; border: 1px solid var(--line); }
+/* Red edge on the right: swipe left to remove */
+.st-swipe .st-front::after {
+  content: ""; position: absolute; top: 0; right: 0; bottom: 0; width: 4px; background: var(--red); pointer-events: none;
+}
+.st-bg {
+  position: absolute; inset: 0; background: var(--red); color: #fff;
+  display: flex; align-items: center; justify-content: flex-end; gap: 6px; padding-right: 20px;
+  font-weight: 800; font-size: 14px; text-transform: uppercase; letter-spacing: 0.04em;
+}
+.st-leaving { max-height: 0; opacity: 0; margin-bottom: -8px; }
+.leg .add-circle { width: 34px; height: 34px; }
+@media (prefers-reduced-motion: reduce) { .st, .st-front.anim { transition: none; } }
+
+/* "Week 3 bookie" inside the loser card */
+.bookie-strip {
+  display: flex; align-items: center; gap: 10px;
+  padding-top: 12px; border-top: 1px solid rgb(255 255 255 / 0.22);
+}
+.bookie-strip.bare { padding-top: 0; border-top: 0; }
+.bookie-strip > div { display: grid; gap: 1px; min-width: 0; }
+.bookie-strip b { font-size: 16px; line-height: 1.15; }
+.bookie-strip .avatar { border: 2px solid #fff; flex: none; }
+.bookie-hint { font-size: 12px; opacity: 0.85; }
+.nowrap { white-space: nowrap; }

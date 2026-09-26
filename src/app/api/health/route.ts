@@ -88,8 +88,10 @@ export async function GET() {
   }
 
   const failing = Object.entries(checks).filter(([, c]) => !c.ok).map(([k]) => k);
+  // Which update is live: the GitHub commit Vercel built.
+  const version = (process.env.VERCEL_GIT_COMMIT_SHA ?? "local").slice(0, 7);
   return NextResponse.json(
-    { ok: failing.length === 0, failing, checks },
+    { ok: failing.length === 0, version, failing, checks },
     { status: 200, headers: { "cache-control": "no-store" } },
   );
 }

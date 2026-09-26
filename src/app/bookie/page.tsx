@@ -131,30 +131,7 @@ export default async function BookiePage() {
           </span>
         </div>
 
-        {/* 1. Who placed it */}
-        <section className="team-card" aria-label="This week's bookie">
-          <div className="team-head">
-            <span className="team-av">
-              <Avatar src={placer ? avatarUrl(placer.avatar) : null} name={placer?.teamName ?? "?"} size={64} />
-            </span>
-            <div>
-              <span className="team-kicker">Week {now.week} bookie</span>
-              <h2 className="team-name">{placer ? (placer.userId === me.userId ? "You" : placer.teamName) : "Not placed yet"}</h2>
-              <span className="team-meta">
-                {placer
-                  ? `Placed ${parlay?.placed_at ? formatPt(new Date(parlay.placed_at)) : ""}${parlay?.dk_odds ? ` at ${formatAmerican(parlay.dk_odds)}` : ""}`
-                  : "Anyone in a DraftKings state can place it. Whoever does is the bookie."}
-              </span>
-            </div>
-          </div>
-          <p className="team-foot">
-            {placer
-              ? owed.length
-                ? `Week ${now.week - 1} loser pays ${placer.userId === me.userId ? "you" : placer.teamName}${placerVenmo ? ` (@${placerVenmo})` : ""}.`
-                : `No Week ${now.week - 1} loser on file yet.`
-              : `Whoever places it is the bookie: Week ${now.week - 1}'s loser pays them back $${config.loserAmount}.`}
-          </p>
-        </section>
+        {/* Who placed it now shows on The Slip, in the loser card ("Week 3 bookie"). */}
 
         {/* Who owes the bookie, with Got it for the bookie (or admin) */}
         {placer && owed.length > 0 && (

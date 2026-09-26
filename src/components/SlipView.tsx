@@ -6,7 +6,9 @@ import { Countdown } from "@/components/client";
 import { StatusChip, PayChip } from "@/components/chrome";
 import { AppBar, Avatar, Hex, LockIcon, Num } from "@/components/ui";
 import { PushToggle } from "@/components/PushToggle";
-import { iPaid, signOut, removeLeg } from "@/app/actions";
+import { iPaid, signOut, removeLeg, restoreLeg } from "@/app/actions";
+import { SwipeTap } from "@/components/SwipeTap";
+import { useRouter } from "next/navigation";
 import type { SlipData, SlipLeg } from "@/lib/slip";
 import { americanToDecimal, formatAmerican } from "@/lib/math";
 import { slotCode } from "@/lib/lines";
@@ -74,6 +76,30 @@ export function SlipView({ initial, pushKey }: { initial: SlipData; pushKey: str
     await load();
   }
 
+  const router = useRouter();
+  const [snack, setSnack] = useState<{ text: string; undo?: string; error?: boolean } | null>(null);
+  const snackTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  function showSnack(next: { text: string; undo?: string; error?: boolean }) {
+    if (snackTimer.current) clearTimeout(snackTimer.current);
+    setSnack(next);
+    snackTimer.current = setTimeout(() => setSnack(null), next.undo ? 6000 : 4000);
+  }
+  /** Swipe left on a card: remove it, with Undo like Gmail. */
+  async function removeRow(row: SlipData["rows"][number]) {
+    const r = await removeLeg(row.isMe ? null : row.userId);
+    await load();
+    if (r.error) return showSnack({ text: r.error, error: true });
+    showSnack({ text: `Removed ${row.isMe ? "your" : `${row.teamName}'s`} leg`, undo: r.undo });
+  }
+  async function undoRemove() {
+    const token = snack?.undo;
+    if (!token) return;
+    setSnack(null);
+    const r = await restoreLeg(token);
+    await load();
+    showSnack(r.error ? { text: r.error, error: true } : { text: "Put back on the slip" });
+  }
+
   useEffect(() => {
     const tick = () => {
       if (document.visibilityState === "visible") load();
@@ -92,7 +118,8 @@ export function SlipView({ initial, pushKey }: { initial: SlipData; pushKey: str
   const oddsMoved = !totals.final && tracking && totals.atPick != null && totals.live != null && totals.atPick !== totals.live;
   const oddsBetter = oddsMoved && americanToDecimal(totals.live!) > americanToDecimal(totals.atPick!);
   const myRow = data.rows.find((r) => r.isMe);
-  const canPick = data.me.picks && !data.locked;
+  // Picking is over once it's locked or placed.
+  const canPick = data.me.picks && !data.locked && data.status === "open";
   const pct = data.needed ? Math.round((data.picked / data.needed) * 100) : 0;
 
   return (
@@ -113,7 +140,7 @@ export function SlipView({ initial, pushKey }: { initial: SlipData; pushKey: str
               <span className="board-label">Parlay odds</span>
               <span className="board-big">{formatAmerican(shownOdds)}</span>
               <span className={`board-sub ${oddsMoved ? (oddsBetter ? "good" : "bad") : ""}`}>
-                {totals.final ? (data.placedBy ? `Placed by ${data.placedBy}` : "Final from DraftKings") : oddsMoved ? `${formatAmerican(totals.atPick)} at pick` : "Live"}
+                {totals.final ? "Final" : oddsMoved ? `${formatAmerican(totals.atPick)} at pick` : "Live"}
                 {" · "}
                 <Num value={totals.stake} prefix="$" /> stake
               </span>
@@ -166,6 +193,7 @@ export function SlipView({ initial, pushKey }: { initial: SlipData; pushKey: str
                 <span className="team-meta"><Num value={d.points} /> pts · {d.tied ? "tied for last" : "lowest score"}</span>
               </div>
             </div>
+            <BookieStrip week={d.funds} bookie={d.bookie} />
             {!d.bookie ? (
               <p className="team-foot">
                 ${data.amount} goes to whoever places the Week {d.funds} parlay. Your Pay button shows up here as soon as someone does.
@@ -215,13 +243,20 @@ export function SlipView({ initial, pushKey }: { initial: SlipData; pushKey: str
                   <h2 className="team-name">{p.teamName}</h2>
                   <span className="team-meta">
                     {p.username} · <Num value={data.lastPlace!.points} /> pts
-                    {p.state !== "paid" && ` · pays ${data.lastPlace!.bookie ?? `Week ${data.lastPlace!.week + 1}'s bookie`}`}
                   </span>
                 </div>
                 <span className="team-pay"><PayChip state={p.state} amount={data.amount} /></span>
               </div>
+              <BookieStrip week={data.week} bookie={data.bookie} />
             </section>
           ))}
+
+        {/* No loser on file: still show who's this week's bookie */}
+        {!data.myDebts.length && !data.lastPlace && (
+          <section className="team-card" aria-label="This week's bookie">
+            <BookieStrip week={data.week} bookie={data.bookie} bare />
+          </section>
+        )}
 
         {/* Big "Optimize"-style button (old NFL Fantasy app) when your slot is empty */}
         {myRow && !myRow.leg && canPick && (
@@ -234,6 +269,16 @@ export function SlipView({ initial, pushKey }: { initial: SlipData; pushKey: str
         )}
 
         <h2 className="section-label">Legs</h2>
+        {data.rows.some((r) => r.canEdit || r.canAdd) && (
+          <p className="legs-hint">
+            <span>Tap a raised card to {data.rows.some((r) => r.canAdd) ? "change or add a pick" : "change it"}</span>
+            {data.rows.some((r) => r.canEdit) && (
+              <span className="nowrap">
+                · <span className="edge edge-remove" aria-hidden="true" /> swipe left to remove
+              </span>
+            )}
+          </p>
+        )}
 
         <ol className="legs">
           {data.rows.map((row) => {
@@ -241,9 +286,14 @@ export function SlipView({ initial, pushKey }: { initial: SlipData; pushKey: str
             const d = leg ? delta(leg) : null;
             const f = flash[row.userId];
             return (
-              <li
-                key={row.userId}
+              <SwipeTap
+                key={`${row.userId}:${leg ? "leg" : "empty"}`}
                 className={["leg", row.isMe ? "mine" : "", leg ? "" : "empty", f ? `flash-${f}` : ""].join(" ")}
+                canTap={leg ? row.canEdit : row.canAdd}
+                canSwipe={!!leg && row.canEdit}
+                onTap={() => router.push(row.href)}
+                onRemove={() => removeRow(row)}
+                label={leg ? `Change ${row.isMe ? "your" : `${row.teamName}'s`} leg` : `Add a pick for ${row.isMe ? "yourself" : row.teamName}`}
               >
                 <div className="leg-row">
                   <span className="slot">{leg ? slotCode(leg.market) : "—"}</span>
@@ -275,6 +325,10 @@ export function SlipView({ initial, pushKey }: { initial: SlipData; pushKey: str
                         <b>{formatAmerican(leg.status === "live" ? leg.livePrice : leg.pickPrice)}</b>
                         {d && <small className={d === "up" ? "good" : "bad"}>{formatAmerican(leg.pickPrice)}</small>}
                       </>
+                    ) : row.canAdd ? (
+                      <span className="add-circle" aria-hidden="true">
+                        <svg viewBox="0 0 18 18" width="18" height="18" style={{ display: "block" }}><path d="M9 2v14M2 9h14" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" /></svg>
+                      </span>
                     ) : (
                       <b className="dash">—</b>
                     )}
@@ -303,10 +357,20 @@ export function SlipView({ initial, pushKey }: { initial: SlipData; pushKey: str
                     ) : null}
                   </div>
                 )}
-              </li>
+              </SwipeTap>
             );
           })}
         </ol>
+        {snack && (
+          <div className={`snack ${snack.error ? "snack-bad" : ""}`} role="status">
+            <span>{snack.text}</span>
+            {snack.undo && (
+              <button type="button" className="snack-undo" onClick={undoRemove}>
+                Undo
+              </button>
+            )}
+          </div>
+        )}
 
         {/* The opposite of Add your leg: at the bottom, away from the legs, so it's hard to hit by accident */}
         {myRow?.leg && data.me.canRemove && (
@@ -357,3 +421,25 @@ export function SlipView({ initial, pushKey }: { initial: SlipData; pushKey: str
   );
 }
 
+
+/** "Week 3 bookie": a ? until someone taps I placed it, then their picture and name. */
+function BookieStrip({
+  week,
+  bookie,
+  bare = false,
+}: {
+  week: number;
+  bookie: { teamName: string; avatar: string | null; isMe?: boolean } | null;
+  bare?: boolean;
+}) {
+  return (
+    <div className={`bookie-strip ${bare ? "bare" : ""}`}>
+      <Avatar src={bookie?.avatar ?? null} name={bookie ? bookie.teamName : "?"} size={bare ? 44 : 34} />
+      <div>
+        <span className="team-kicker">Week {week} bookie</span>
+        <b>{bookie ? (bookie.isMe ? "You" : bookie.teamName) : "Not placed yet"}</b>
+        {!bookie && <span className="bookie-hint">Whoever places it on DraftKings</span>}
+      </div>
+    </div>
+  );
+}
