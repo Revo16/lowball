@@ -1,13 +1,22 @@
 import "server-only";
 import { db } from "./db";
 
-// Everyone's Venmo, for paying the week's bookie. Handles are personal, so
-// they never go in the code (the repo is public):
-//  - VENMOS in Vercel seeds them: "userId=handle,userId=handle"
-//  - anyone can set or change their own in the app (League tab, or when they
-//    tap I placed it), and the admin can set anyone's. Those are saved in the
-//    database and win over the seed.
+// Everyone's Venmo, for paying the week's bookie. Where a handle comes from,
+// last one wins:
+//  1. DEFAULT_VENMOS below (the pool, keyed by Sleeper user id)
+//  2. VENMOS in Vercel, "userId=handle,userId=handle" (optional overrides)
+//  3. What people save in the app: their own on the League tab or when they tap
+//     I placed it, or anyone's by the admin (stored in the database)
 // The admin's falls back to PAY_TO_VENMO.
+
+const DEFAULT_VENMOS: Record<string, string> = {
+  "1022603316649414656": "varun-neti", // 4KTREY NUTTR
+  "565349860547133440": "iananderson13", // Need for Shaheed
+  "1067937915054952448": "colby-biesold", // oy vey my ACL
+  "1065164963234271232": "ryanrobinson9", // The Hogfather
+  "1128911101363654656": "ktak49", // Slippin' Tony
+  "1065765604533145600": "zach-smith-288", // tobiechip
+};
 
 const KEY = "venmo:";
 
@@ -17,7 +26,7 @@ export function cleanHandle(raw: string): string | null {
 }
 
 function seed(): Map<string, string> {
-  const out = new Map<string, string>();
+  const out = new Map<string, string>(Object.entries(DEFAULT_VENMOS));
   for (const pair of (process.env.VENMOS ?? "").split(/[,\n]/)) {
     const [id, handle] = pair.split("=").map((s) => s?.trim());
     const h = handle ? cleanHandle(handle) : null;
