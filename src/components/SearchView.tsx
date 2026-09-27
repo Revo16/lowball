@@ -129,8 +129,8 @@ export function SearchView({ initial }: { initial: BoardData }) {
       { userId: target.userId, teamName: target.teamName, eventId: l.eventId, market: l.market, desc: l.desc || null, key: r.key ?? l.key, selection: l.label, price: l.price, enteredBy: initial.forOther ? initial.meId : null },
     ]);
     setToast({ kind: "ok", text: swapping ? `Swapped to ${l.label}` : r.ok ?? "On the slip" });
-    // Picking for someone else: back to the Bookie tab for the next name.
-    if (initial.forOther) setTimeout(() => (window.location.href = "/bookie"), 1400);
+    // Picking for someone else: back to The Slip.
+    if (initial.forOther) setTimeout(() => (window.location.href = "/"), 1400);
   }
 
   const browsing = !q && chip === "all" && !gameFilter;
@@ -310,7 +310,7 @@ export function SearchView({ initial }: { initial: BoardData }) {
         <details className="custom" id="custom">
           <summary>Can&apos;t find it? Add a bet by hand</summary>
           <p className="small muted">Alt lines, other props, anything on DraftKings. Copy the odds from the app if you have them.</p>
-          <ActionForm action={pickCustom} className="stack" resetOnSuccess onSuccess={() => (initial.forOther ? setTimeout(() => (window.location.href = "/bookie"), 1400) : refreshLegs())}>
+          <ActionForm action={pickCustom} className="stack" resetOnSuccess onSuccess={() => (initial.forOther ? setTimeout(() => (window.location.href = "/"), 1400) : refreshLegs())}>
             <input type="hidden" name="forUser" value={forUser ?? ""} />
             <div className="field">
               <label htmlFor="selection">The bet</label>

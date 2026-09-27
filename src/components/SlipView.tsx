@@ -6,7 +6,8 @@ import { Countdown } from "@/components/client";
 import { StatusChip, PayChip } from "@/components/chrome";
 import { AppBar, Avatar, Hex, LockIcon, Num } from "@/components/ui";
 import { PushToggle } from "@/components/PushToggle";
-import { iPaid, signOut, removeLeg, restoreLeg } from "@/app/actions";
+import { iPaid, signOut, removeLeg, restoreLeg, unpay, nudge } from "@/app/actions";
+import { DkSheet, PlaceSheet } from "@/components/Sheets";
 import { SwipeTap } from "@/components/SwipeTap";
 import { useRouter } from "next/navigation";
 import type { SlipData, SlipLeg } from "@/lib/slip";
@@ -106,6 +107,68 @@ export function SlipView({ initial, pushKey }: { initial: SlipData; pushKey: str
     showSnack(r.error ? { text: r.error, error: true } : { text: "Put back on the slip" });
   }
 
+  // Bookie row: + opens the "I placed it" sheet; DK opens DraftKings (or a sheet first).
+  const [sheet, setSheet] = useState<"place" | "dk" | null>(null);
+  function tapDk() {
+    const p = data.place;
+    if (!p.ready) {
+      return showSnack({
+        text: p.legs === 0 ? "No legs on the slip yet." : `DraftKings opens when all ${p.needed} legs are in (${p.legs}/${p.needed}) or picks lock.`,
+      });
+    }
+    setSheet("dk");
+  }
+  function stripHere(bare = false) {
+    return (
+      <BookieStrip
+        week={data.week}
+        bookie={data.bookie ? { ...data.bookie, odds: totals.final } : null}
+        bare={bare}
+        place={data.status === "open" || data.status === "locked" ? data.place : null}
+        onPlus={() => setSheet("place")}
+        onDk={tapDk}
+      />
+    );
+  }
+
+  const [poking, setPoking] = useState(false);
+  async function poke() {
+    setPoking(true);
+    const r = await nudge({}, new FormData());
+    setPoking(false);
+    showSnack(r.error ? { text: r.error, error: true } : { text: r.ok ?? "Poked" });
+  }
+  async function copySlip() {
+    try {
+      await navigator.clipboard.writeText(data.copyText);
+    } catch {
+      const t = document.createElement("textarea");
+      t.value = data.copyText;
+      document.body.appendChild(t);
+      t.select();
+      document.execCommand("copy");
+      t.remove();
+    }
+    showSnack({ text: "Slip copied. Paste it in the group chat." });
+  }
+
+  // Once per phone, the first card you can remove slides left a little to show it swipes.
+  const [peekFor, setPeekFor] = useState<string | null>(null);
+  useEffect(() => {
+    const first = data.rows.find((r) => r.leg && r.canEdit);
+    if (!first) return;
+    let seen = false;
+    try {
+      seen = localStorage.getItem("lowball.swipe-peek") === "1";
+      localStorage.setItem("lowball.swipe-peek", "1");
+    } catch {}
+    if (seen) return;
+    const t = setTimeout(() => setPeekFor(first.userId), 900);
+    return () => clearTimeout(t);
+    // Only on first load.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   useEffect(() => {
     const tick = () => {
       if (document.visibilityState === "visible") load();
@@ -199,40 +262,29 @@ export function SlipView({ initial, pushKey }: { initial: SlipData; pushKey: str
                 <span className="team-meta"><Num value={d.points} /> pts · {d.tied ? "tied for last" : "lowest score"}</span>
               </div>
             </div>
-            <BookieStrip week={d.funds} bookie={d.bookie} />
-            {!d.bookie ? (
-              <p className="team-foot">
-                ${data.amount} goes to whoever places the Week {d.funds} parlay. Your Pay button shows up here as soon as someone does.
-              </p>
-            ) : (
-              <>
-                <div className={`team-actions ${d.venmoUrl ? "" : "one"}`}>
-                  {d.venmoUrl && (
-                    <a className="btn btn-green" href={d.venmoUrl} target="_blank" rel="noopener noreferrer">
-                      Pay ${data.amount} on Venmo
-                    </a>
-                  )}
-                  <button
-                    type="button"
-                    className="btn btn-glass"
-                    disabled={paying === d.week}
-                    onClick={async () => {
-                      setPaying(d.week);
-                      await iPaid(d.week);
-                      await load();
-                      setPaying(null);
-                    }}
-                  >
-                    {paying === d.week ? "Saving…" : "I paid"}
-                  </button>
-                </div>
-                <p className="team-foot">
-                  {d.venmoUrl
-                    ? `${d.bookie.teamName} placed Week ${d.funds}, so they're the bookie. Venmo opens with @${d.bookie.venmo}, $${data.amount} and the note filled in.`
-                    : `${d.bookie.teamName} placed Week ${d.funds} but hasn't added a Venmo yet. Pay them however you like, then tap I paid.`}
-                </p>
-              </>
+            {d.bookie && (
+              <div className={`team-actions ${d.venmoUrl ? "" : "one"}`}>
+                {d.venmoUrl && (
+                  <a className="btn btn-green" href={d.venmoUrl} target="_blank" rel="noopener noreferrer">
+                    Pay ${data.amount} on Venmo
+                  </a>
+                )}
+                <button
+                  type="button"
+                  className="btn btn-glass"
+                  disabled={paying === d.week}
+                  onClick={async () => {
+                    setPaying(d.week);
+                    await iPaid(d.week);
+                    await load();
+                    setPaying(null);
+                  }}
+                >
+                  {paying === d.week ? "Saving…" : "I paid"}
+                </button>
+              </div>
             )}
+            {d.funds === data.week ? stripHere() : <BookieStrip week={d.funds} bookie={d.bookie} />}
           </section>
         ))}
 
@@ -246,21 +298,39 @@ export function SlipView({ initial, pushKey }: { initial: SlipData; pushKey: str
                 </span>
                 <div>
                   <span className="team-kicker">Last place · Week {data.lastPlace!.week}</span>
-                  <h2 className="team-name">{p.teamName}</h2>
+                  <h2 className="team-name">{p.userId === data.me.userId ? "That's you" : p.teamName}</h2>
                   <span className="team-meta">
                     {p.username} · <Num value={data.lastPlace!.points} /> pts
                   </span>
                 </div>
                 <span className="team-pay"><PayChip state={p.state} amount={data.amount} /></span>
               </div>
-              <BookieStrip week={data.week} bookie={data.bookie} />
+              {p.state === "paid" && p.canUndo && (
+                <div className="paid-row">
+                  <span className="team-foot">
+                    Paid{data.bookie ? ` ${data.bookie.isMe ? "you" : data.bookie.teamName}` : ""}
+                    {p.paidAt ? ` · ${formatPt(new Date(p.paidAt))}` : ""}
+                  </span>
+                  <button
+                    type="button"
+                    className="undo-link"
+                    onClick={async () => {
+                      await unpay(data.lastPlace!.week, p.userId);
+                      await load();
+                    }}
+                  >
+                    Undo
+                  </button>
+                </div>
+              )}
+              {stripHere()}
             </section>
           ))}
 
         {/* No loser on file: still show who's this week's bookie */}
         {!data.myDebts.length && !data.lastPlace && (
           <section className="team-card" aria-label="This week's bookie">
-            <BookieStrip week={data.week} bookie={data.bookie} bare />
+            {stripHere(true)}
           </section>
         )}
 
@@ -274,17 +344,19 @@ export function SlipView({ initial, pushKey }: { initial: SlipData; pushKey: str
           </div>
         )}
 
-        <h2 className="section-label">Legs</h2>
-        {data.rows.some((r) => r.canEdit || r.canAdd) && (
-          <p className="legs-hint">
-            <span>Tap a raised card to {data.rows.some((r) => r.canAdd) ? "change or add a pick" : "change it"}</span>
-            {data.rows.some((r) => r.canEdit) && (
-              <span className="nowrap">
-                · <span className="edge edge-remove" aria-hidden="true" /> swipe left to remove
-              </span>
-            )}
-          </p>
-        )}
+        <div className="legs-bar">
+          {data.poke.missing > 0 ? (
+            <button type="button" className="tool poke" onClick={poke} disabled={poking}>
+              <span aria-hidden="true">👉</span> {poking ? "Poking…" : `Poke ${data.poke.missing}`}
+            </button>
+          ) : (
+            <span />
+          )}
+          <button type="button" className="tool copy" onClick={copySlip}>
+            <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path d="M8 3h9a2 2 0 0 1 2 2v11h-2V5H8V3Zm-3 4h9a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2Zm0 2v11h9V9H5Z" fill="currentColor" /></svg>
+            Copy
+          </button>
+        </div>
 
         <ol className="legs">
           {data.rows.map((row) => {
@@ -297,6 +369,7 @@ export function SlipView({ initial, pushKey }: { initial: SlipData; pushKey: str
                 className={["leg", row.isMe ? "mine" : "", leg ? "" : "empty", f ? `flash-${f}` : ""].join(" ")}
                 canTap={leg ? row.canEdit : row.canAdd}
                 canSwipe={!!leg && row.canEdit}
+                peek={peekFor === row.userId}
                 onTap={() => router.push(row.href)}
                 onRemove={() => removeRow(row)}
                 label={leg ? `Change ${row.isMe ? "your" : `${row.teamName}'s`} leg` : `Add a pick for ${row.isMe ? "yourself" : row.teamName}`}
@@ -367,6 +440,20 @@ export function SlipView({ initial, pushKey }: { initial: SlipData; pushKey: str
             );
           })}
         </ol>
+        {sheet === "dk" && <DkSheet place={data.place} onClose={() => setSheet(null)} />}
+        {sheet === "place" && (
+          <PlaceSheet
+            week={data.week}
+            place={data.place}
+            losers={data.lastPlace?.people.filter((p) => p.state !== "paid").map((p) => p.teamName) ?? []}
+            onClose={() => setSheet(null)}
+            onDone={async (msg) => {
+              setSheet(null);
+              await load();
+              showSnack({ text: msg });
+            }}
+          />
+        )}
         {snack && (
           <div className={`snack ${snack.error ? "snack-bad" : ""}`} role="status">
             <span>{snack.text}</span>
@@ -428,24 +515,62 @@ export function SlipView({ initial, pushKey }: { initial: SlipData; pushKey: str
 }
 
 
-/** "Week 3 bookie": a ? until someone taps I placed it, then their picture and name. */
+/**
+ * "Week 3 bookie". Before it's placed: a ? picture with a green + (tap to record
+ * that you placed it) and a DK button (opens the parlay in DraftKings). After:
+ * the bookie's picture, name, Venmo and odds.
+ */
 function BookieStrip({
   week,
   bookie,
   bare = false,
+  place = null,
+  onPlus,
+  onDk,
 }: {
   week: number;
-  bookie: { teamName: string; avatar: string | null; isMe?: boolean } | null;
+  bookie: { teamName: string; avatar: string | null; isMe?: boolean; venmo?: string | null; odds?: number | null } | null;
   bare?: boolean;
+  place?: SlipData["place"] | null;
+  onPlus?: () => void;
+  onDk?: () => void;
 }) {
+  const open = !bookie && !!place;
+  const direct = open && place!.ready && !place!.byHand.length && !place!.early && !!place!.link;
   return (
     <div className={`bookie-strip ${bare ? "bare" : ""}`}>
-      <Avatar src={bookie?.avatar ?? null} name={bookie ? bookie.teamName : "?"} size={bare ? 44 : 34} />
+      {open ? (
+        <button type="button" className="bk-claim" onClick={onPlus} aria-label={`I placed it: become the Week ${week} bookie`}>
+          <Avatar src={null} name="?" size={40} />
+          <span className="plus-badge" aria-hidden="true">+</span>
+        </button>
+      ) : (
+        <Avatar src={bookie?.avatar ?? null} name={bookie ? bookie.teamName : "?"} size={bare ? 44 : 40} />
+      )}
       <div>
         <span className="team-kicker">Week {week} bookie</span>
         <b>{bookie ? (bookie.isMe ? "You" : bookie.teamName) : "Not placed yet"}</b>
-        {!bookie && <span className="bookie-hint">Whoever places it on DraftKings</span>}
+        {bookie ? (
+          (bookie.venmo || bookie.odds != null) && (
+            <span className="bookie-hint">
+              {[bookie.venmo ? `@${bookie.venmo}` : null, bookie.odds != null ? `placed at ${formatAmerican(bookie.odds)}` : null].filter(Boolean).join(" · ")}
+            </span>
+          )
+        ) : open ? (
+          <span className="bookie-hint">Placed it on DraftKings? Tap +</span>
+        ) : null}
       </div>
+      {open &&
+        (direct ? (
+          <a className="dk-btn" href={place!.link!} target="_blank" rel="noopener noreferrer" aria-label="Open the parlay in DraftKings">
+            DK
+          </a>
+        ) : (
+          <button type="button" className={`dk-btn ${place!.ready ? "" : "dim"}`} onClick={onDk} aria-label="Open the parlay in DraftKings">
+            DK
+            {!place!.ready && <small>{place!.legs}/{place!.needed}</small>}
+          </button>
+        ))}
     </div>
   );
 }

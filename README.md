@@ -2,16 +2,16 @@
 
 The No Shoes Nation punishment parlay, as a web app. Nobody downloads anything: it's a link that works in any phone browser, and adding it to the home screen gives it an icon and a full-screen view (iPhone: Share → Add to Home Screen; Android: menu → Install app).
 
-**Two tabs:**
+**Three tabs:** The Slip, Find a bet, League.
 
-- **The Slip** (home). Last week's last-place finisher and whether they've paid (Owes $5 / Says paid / Paid) sit at the top. Below that is the parlay as a paper slip: one row per person, blank for anyone who hasn't picked. Each leg shows the current DraftKings price, with ▲/▼ against what it was when picked, and flags a line that moved (e.g. -2.5 became -3). Combined odds and payout update with it. The page refreshes itself every 30 seconds, so new picks and price moves just appear. Once someone marks it placed, prices freeze at the final odds.
+- **The Slip** (home), where the whole week happens. Top: parlay odds, what it pays and each person's share. Then last week's loser (Owes $5 / Paid) with the **Week N bookie** row: a ? with a green **+** (tap after placing it to record odds, stake and your Venmo and become the bookie) and a **DK** button that opens the whole parlay in DraftKings (dim until every leg is in or picks lock; if some legs can't ride in the link it lists them first). The loser gets Pay on Venmo and **I paid** (counts right away, with Undo). Above the legs: **Poke** (push to everyone without a leg, once per 30 minutes) and **Copy** (the slip as text for the group chat). Below that is the parlay as a paper slip, where cards you can act on are raised: tap to change a leg or fill an empty slot, swipe left to remove (red edge), with Undo: one row per person, blank for anyone who hasn't picked. Each leg shows the current DraftKings price, with ▲/▼ against what it was when picked, and flags a line that moved (e.g. -2.5 became -3). Combined odds and payout update with it. The page refreshes itself every 30 seconds, so new picks and price moves just appear. Once someone marks it placed, prices freeze at the final odds.
 - **Find a bet.** Every game's spread, total and moneyline in a DraftKings-style grid, plus search across every player prop ("walker", "chase td", "mahomes"), with filter chips for Spreads, Moneylines, Totals, Anytime TD, Pass/Rush/Rec yards. Tap a line to put it on the slip, or tap another to swap. Lines someone already took are greyed out with their name. Anything not listed can be added by hand.
 
-**Money:** each week's last-place finisher funds the next week's parlay, so they pay whoever places it (the bookie). Their Pay on Venmo button shows up on The Slip as soon as someone taps I placed it, prefilled with the bookie's Venmo, $5 and a note; then they tap I paid, and the bookie taps Got it on the Bookie tab (the admin can too). If the loser places it themselves, they're square. The pool's Venmo handles are in `src/lib/venmos.ts`; anyone can add or change their own on the League tab or when they tap I placed it (the `VENMOS` setting in Vercel can also override them). **Placing:** nobody claims anything. Once all legs are in (or picks lock), the **Bookie** tab shows one **Open parlay in DraftKings** button that loads every spread, total and moneyline leg onto a single betslip; props and typed-in bets get added by hand. Whoever places it taps **I placed it** and shows up as that week's bookie. **Winnings:** under the slip, this week's payout if it hits and the season's total, each also split per person. **Nudge:** one button pushes a notification to every pool member without a leg (once per 30 minutes); the Friday and Saturday reminders push too. **Admin** (`ADMIN_SLEEPER_USERNAME`): add/remove players, edit any week's parlay result, confirm $5 payments, fix or remove any leg before it's placed. Group-chat posts (Discord or GroupMe, optional) go out Tuesday (loser), Friday and Saturday (who hasn't picked), and after lock (final slip).
+**Money:** each week's last-place finisher funds the next week's parlay, so they pay whoever places it (the bookie). Their Pay on Venmo button shows up on The Slip as soon as someone taps I placed it, prefilled with the bookie's Venmo, $5 and a note; then they tap I paid, which counts right away and can be undone (by them, the bookie or the admin; League can also mark it paid). If the loser places it themselves, they're square. The pool's Venmo handles are in `src/lib/venmos.ts`; anyone can add or change their own on the League tab or when they tap I placed it (the `VENMOS` setting in Vercel can also override them). **Placing:** tap **DK** on The Slip, place it in DraftKings, then tap the **+** by Week N bookie. **Winnings:** this week's payout and share are on The Slip; the season total is on League. **Poke:** pushes everyone without a leg (once per 30 minutes); the Friday and Saturday reminders push too. **Admin** (`ADMIN_SLEEPER_USERNAME`): add/remove players, edit any week's parlay result, confirm $5 payments, fix or remove any leg before it's placed. Group-chat posts (Discord or GroupMe, optional) go out Tuesday (loser), Friday and Saturday (who hasn't picked), and after lock (final slip).
 
 ## What it can't do, and why
 
-- **Send Venmo requests automatically.** Venmo shut its API to new developers, so no app can request or move money for you. The prefilled pay link is the lowest-friction option that exists. The admin confirms receipt on the Bookie tab.
+- **Send Venmo requests automatically.** Venmo shut its API to new developers, so no app can request or move money for you. The prefilled pay link is the lowest-friction option that exists. Losers tap I paid; it can be undone.
 - **Place the bet.** DraftKings has no public betting API. Whoever places it opens the one-tap parlay link, adds any props by hand, and places it.
 - **Guarantee the odds.** Leg prices are DraftKings' lines (via ESPN and SportsGameOdds) at pick time. Lines move, and DraftKings reprices same-game legs as an SGP, so the estimate on the slip can differ from what DraftKings gives. The person placing it enters the real number after placing it.
 
@@ -23,8 +23,8 @@ The No Shoes Nation punishment parlay, as a web app. Nobody downloads anything: 
 3. Project Settings → API: copy the **Project URL** and the **service_role** key.
 
 ### 2. Odds (free)
-- **Spreads, totals, moneylines:** ESPN's public scoreboard feed, which carries DraftKings' lines. No key, no limit, refreshed every 5 minutes. It also includes DraftKings links that open the sportsbook with that bet on the betslip, which the one-tap parlay link on the Bookie tab is built from. The feed is unofficial, so if ESPN changes it the app falls back to SportsGameOdds for game lines.
-- **Player props:** sign up for the free plan at [sportsgameodds.com](https://sportsgameodds.com) (no card) and set `SGO_API_KEY`. The free plan allows 2,500 games a month; one pull of the whole week's slate is ~15. The app spreads the month's allowance evenly, so props refresh roughly every 1–3 hours and faster when usage has been light. The bookie tab shows usage.
+- **Spreads, totals, moneylines:** ESPN's public scoreboard feed, which carries DraftKings' lines. No key, no limit, refreshed every 5 minutes. It also includes DraftKings links that open the sportsbook with that bet on the betslip, which the DK button on The Slip is built from. The feed is unofficial, so if ESPN changes it the app falls back to SportsGameOdds for game lines.
+- **Player props:** sign up for the free plan at [sportsgameodds.com](https://sportsgameodds.com) (no card) and set `SGO_API_KEY`. The free plan allows 2,500 games a month; one pull of the whole week's slate is ~15. The app spreads the month's allowance evenly, so props refresh roughly every 1–3 hours and faster when usage has been light. League shows usage.
 - Run `SGO_API_KEY=... node scripts/check-odds.mjs` once after signing up. It confirms both feeds return DraftKings data in the shape the app reads.
 - No SportsGameOdds key: everything works except prop search. Props can still be added by hand.
 - `ODDS_API_KEY` (The Odds API, paid) is still supported as a props source if you ever want faster prop refreshes.
@@ -32,12 +32,12 @@ The No Shoes Nation punishment parlay, as a web app. Nobody downloads anything: 
 ### 3. Push notifications
 1. Run `npx web-push generate-vapid-keys` once and put the two keys in `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY`.
 2. Each person turns them on from the card at the top of The Slip. **iPhone:** Share → Add to Home Screen first, open Lowball from the Home Screen, then tap Turn on (Apple only allows web push for installed apps, iOS 16.4+). **Android/desktop:** works in the browser.
-3. The Bookie tab marks who has notifications off, and Nudge tells you who it couldn't reach.
+3. Poke tells you who it couldn't reach (notifications off).
 
 ### 4. Group chat (optional but it's what kills the friction)
 - **Discord:** channel settings → Integrations → Webhooks → New Webhook → Copy URL.
 - **GroupMe:** [dev.groupme.com/bots](https://dev.groupme.com/bots) → Create Bot in your league chat → copy the Bot ID.
-- iMessage group chats can't take bot messages. If that's your chat, skip this and anyone can copy the slip from the Bookie tab.
+- iMessage group chats can't take bot messages. If that's your chat, skip this and anyone can tap Copy on The Slip and paste it.
 
 ### 5. Deploy to Vercel
 1. Push this folder to a GitHub repo.
@@ -52,7 +52,7 @@ Post the link and the `LEAGUE_PIN` in the group chat. Each person picks their te
 - `ADMIN_SLEEPER_USERNAME`: your Sleeper name (Revo16). Manages the pool, confirms payments, pays back whoever places the bet.
 - `PAY_TO_VENMO`: your own Venmo username, no @ (used when you're the bookie).
 - `VENMOS` (optional): overrides for the Venmo handles in `src/lib/venmos.ts`, as `sleeperUserId=handle,sleeperUserId=handle`.
-- The starting pool (7 teams) is seeded by `supabase/schema.sql`; change it later on the Bookie tab.
+- The starting pool (7 teams) is seeded by `supabase/schema.sql`; change it later on the League tab.
 - `LOSER_PICKS`: `true` if the loser still picks a leg on the parlay they're funding, `false` to sit them out.
 
 ## Schedule
@@ -71,15 +71,15 @@ Each message is sent once per week even if a cron retries. To trigger one by han
 ## Rules the app enforces
 
 - One leg per person per week. Picking again replaces your leg until lock.
-- **Early games (Thursday night, Saturday, London):** any game can go on the slip until 15 minutes before its kickoff. If the parlay isn't placed (and marked I placed it) by then, legs on that game come off the slip and their owners get a push to pick again. The Slip marks those legs "Drops Thu 5:00 PM", Bookie warns whoever is placing it, and a cron runs right after Thursday's and Sunday morning's cutoffs (the app also checks whenever anyone opens it).
+- **Early games (Thursday night, Saturday, London):** any game can go on the slip until 15 minutes before its kickoff. If the parlay isn't placed (and marked I placed it) by then, legs on that game come off the slip and their owners get a push to pick again. The Slip marks those legs "Drops Thu 5:00 PM", the DK sheet warns whoever is placing it, and a cron runs right after Thursday's and Sunday morning's cutoffs (the app also checks whenever anyone opens it).
 - **Adding a bet by hand:** pick the game from a dropdown (only games still open), and the odds have a −/+ switch since phone number pads have no minus key.
 - **Props:** every full-game DraftKings player prop SportsGameOdds carries (receptions, passing TDs, first TD, 2+ TDs, rush + rec yards, tackles, kicking and so on) plus team totals, not just the four originals. `node scripts/check-odds.mjs` lists every prop type the feed has this week.
 - Two people can't take the same market in the same game (both sides of a spread, say), since DraftKings won't take that parlay. Different markets in the same game are allowed with an SGP warning.
 - Ties for last: everyone tied owes, and the stake scales up.
-- Stat corrections or pool changes: anyone can re-pull a week's loser from the Bookie tab. Anyone who already paid stays on the books.
+- Stat corrections or pool changes: anyone can re-pull a week's loser from the League tab. Anyone who already paid stays on the books.
 - **A leg you pick yourself is yours:** only you can change or remove it, until the lock; the admin can still fix it. **A leg someone entered for you** (texted-in picks) is tagged "Entered by …" and anyone can change or remove it until the parlay is placed; the owner gets a push either way. Re-pick it yourself and it's locked to you.
-- **Bookie tab cards:** every slot is a card. Empty slots have a blue **+** button to add a pick for that player (they don't swipe). Filled cards swipe right to change (yellow edge) and left to remove (red edge, with Undo), both or neither: your own leg until the lock, any leg entered for someone until it's placed, every leg for the admin. Other players' own picks show a lock.
-- **Find a bet is always you.** Picking for someone else only starts from their Bookie card, and shows a yellow "Picking for …" bar; ✕ takes you back to your own leg.
+- **Slip cards:** cards you can act on are raised. Tap to change (or, on an empty slot with a blue +, add a pick for that player); swipe left to remove (red edge, with Undo). You can act on your own leg until the lock, any leg entered for someone until it's placed, and every leg if you're the admin. Other players' own picks sit flat with a lock.
+- **Find a bet is always you.** Picking for someone else starts by tapping their card on The Slip, and shows a yellow "Picking for …" bar; ✕ takes you back to your own leg.
 
 ## Try it locally without any accounts
 
@@ -113,7 +113,7 @@ src/lib/slip.ts      Everything The Slip shows, as JSON (/api/slip)
 src/lib/board.ts     Game lines + props for Find a bet (/api/board)
 src/components/SlipView.tsx    The Slip, polls every 30s
 src/components/SearchView.tsx  Find a bet, instant client-side search
-src/app/bookie/      Bookie tab: one-tap parlay, I placed it, payments, player pool
+src/components/Sheets.tsx  DK and I placed it sheets
 src/app/api/cron/    Tuesday loser, reminders, lock
 ```
 

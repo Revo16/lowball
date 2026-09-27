@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-type Tab = "slip" | "search" | "bookie" | "league";
+type Tab = "slip" | "search" | "league";
 
 function Icon({ name }: { name: Tab }) {
   const common = { width: 26, height: 26, viewBox: "0 0 24 24", "aria-hidden": true };
@@ -32,11 +32,10 @@ function Icon({ name }: { name: Tab }) {
 }
 
 /** Bottom tabs: grey icons, the active one in gold. */
-export function BottomNav({ current }: { current: Tab; isBookie?: boolean }) {
+export function BottomNav({ current }: { current: Tab }) {
   const tabs: Array<{ id: Tab; href: string; label: string }> = [
     { id: "slip", href: "/", label: "Slip" },
     { id: "search", href: "/search", label: "Find a bet" },
-    { id: "bookie", href: "/bookie", label: "Bookie" },
     { id: "league", href: "/league", label: "League" },
   ];
   return (

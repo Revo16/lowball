@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, type PointerEvent as RPointerEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState, type PointerEvent as RPointerEvent, type ReactNode } from "react";
 
 // One Slip card. A card you can act on is raised like a button:
 //  - tap it to change the leg (or add one to an empty slot)
@@ -14,6 +14,7 @@ export function SwipeTap({
   onTap,
   onRemove,
   label,
+  peek = false,
   children,
 }: {
   className: string;
@@ -22,6 +23,8 @@ export function SwipeTap({
   onTap: () => void;
   onRemove: () => void;
   label: string;
+  /** Slide left a little and back once, to show the card swipes. */
+  peek?: boolean;
   children: ReactNode;
 }) {
   const front = useRef<HTMLDivElement>(null);
@@ -30,6 +33,13 @@ export function SwipeTap({
   const [anim, setAnim] = useState(false);
   const [leaving, setLeaving] = useState(false);
   const [pressed, setPressed] = useState(false);
+
+  useEffect(() => {
+    if (!peek || !canSwipe) return;
+    const a = setTimeout(() => { setAnim(true); setDx(-72); }, 0);
+    const b = setTimeout(() => { setAnim(true); setDx(0); }, 700);
+    return () => { clearTimeout(a); clearTimeout(b); };
+  }, [peek, canSwipe]);
 
   function down(e: RPointerEvent<HTMLDivElement>) {
     if ((!canTap && !canSwipe) || leaving) return;

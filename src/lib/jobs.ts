@@ -119,9 +119,9 @@ export async function lockMessage() {
   const done = new Set(legs.map((l) => l.user_id));
   const missed = pickers.filter((m) => !done.has(m.userId)).map((m) => m.teamName);
   return [
-    `Picks are locked. Whoever's in a DraftKings state: open the Bookie tab, tap Open parlay in DraftKings, place it, then tap I placed it.`,
+    `Picks are locked. Whoever's in a DraftKings state: tap DK on The Slip to open the parlay in DraftKings, place it, then tap the + next to Week bookie.`,
     text,
     missed.length ? `No pick: ${missed.join(", ")}` : "",
-    link("/bookie"),
+    link("/"),
   ].filter(Boolean).join("\n");
 }

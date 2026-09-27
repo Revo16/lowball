@@ -4,9 +4,9 @@ import { config } from "./config";
 import { getLegs, getLosers, getParlay, getParlays, type Leg } from "./db";
 import { liveBottom, avatarUrl, type Member } from "./sleeper";
 import { seasonNow } from "./season";
-import { expectedPickers, stakeFor } from "./jobs";
+import { expectedPickers, stakeFor, slipText } from "./jobs";
 import { americanToDecimal, parlayOdds, payout } from "./math";
-import { gameOdds, propSlate, dkMarkets, currentPrice, isPropMarket, MARKET_LABEL, type Market, type OddsWindow } from "./odds";
+import { gameOdds, propSlate, dkMarkets, currentPrice, dkParlayLink, isPropMarket, MARKET_LABEL, type Market, type OddsWindow } from "./odds";
 import { venmoPayLink } from "./venmo";
 import { venmos } from "./venmos";
 import { canEditLeg, cutoffFor, isEarly } from "./legrules";
@@ -69,7 +69,16 @@ export type SlipData = {
   lastPlace: {
     week: number;
     points: number;
-    people: Array<{ userId: string; teamName: string; username: string; avatar: string | null; state: "owes" | "says-paid" | "paid" }>;
+    people: Array<{
+      userId: string;
+      teamName: string;
+      username: string;
+      avatar: string | null;
+      state: "owes" | "says-paid" | "paid";
+      paidAt: string | null;
+      /** The viewer can flip "paid" back: the loser, that week's bookie, or the admin. */
+      canUndo: boolean;
+    }>;
     /** Who they pay: whoever placed the parlay their $5 funds. Null until it's placed. */
     bookie: string | null;
   } | null;
@@ -91,6 +100,26 @@ export type SlipData = {
   /** The admin, for "ask them to add you". */
   payTo: { teamName: string | null };
   placedBy: string | null;
+  /** Everything the bookie row needs before it's placed: the DK button and the "I placed it" sheet. */
+  place: {
+    /** One DraftKings link with every leg that has an outcome id. */
+    link: string | null;
+    inLink: number;
+    /** Legs that can't ride in the link (props without an id, typed-in bets): add by hand. */
+    byHand: Array<{ selection: string; teamName: string }>;
+    /** DK lights up once every leg is in or picks lock. */
+    ready: boolean;
+    legs: number;
+    needed: number;
+    /** Legs on early games that drop at their cutoff if it isn't placed by then. */
+    early: { cutoff: string; names: string[] } | null;
+    stake: number;
+    myVenmo: string;
+  };
+  /** Poke: how many pool members still have no leg. */
+  poke: { missing: number };
+  /** The plain-text slip for the Copy button. */
+  copyText: string;
   /** This week's bookie: whoever tapped I placed it. Null until then. */
   bookie: { userId: string; teamName: string; avatar: string | null; isMe: boolean; venmo: string | null } | null;
   amount: number;
@@ -256,7 +285,32 @@ export async function slipData(me: Member, all: Member[]): Promise<SlipData> {
         venmoUrl: venmo ? venmoPayLink({ to: venmo, amount: config.loserAmount, note: `Lowball Week ${l.week + 1} parlay 🧻` }) : null,
       };
     });
+  // The DK button and the "I placed it" sheet (what the Bookie tab used to do).
+  const byKick = [...legs].sort((a, b) => (a.commence_time ?? "9").localeCompare(b.commence_time ?? "9"));
+  const inLinkLegs = byKick.filter((l) => !!l.dk_link);
+  const haveLeg = new Set(legs.map((l) => l.user_id));
+  const missingCount = pickers.filter((p) => !haveLeg.has(p.userId)).length;
+  const earlyLegs = frozen ? [] : byKick.filter((l) => isEarly(l.commence_time, now.lock));
+  const firstCutoff = earlyLegs.length
+    ? earlyLegs.map((l) => cutoffFor(l.commence_time!)).sort((a, b) => a.getTime() - b.getTime())[0]
+    : null;
+  const place: SlipData["place"] = {
+    link: dkParlayLink(inLinkLegs.map((l) => l.dk_link)),
+    inLink: inLinkLegs.length,
+    byHand: byKick.filter((l) => !l.dk_link).map((l) => ({ selection: l.selection, teamName: byId.get(l.user_id)?.teamName ?? "?" })),
+    ready: legs.length > 0 && (now.locked || (pickers.length > 0 && missingCount === 0)),
+    legs: legs.length,
+    needed: pickers.length,
+    early: firstCutoff ? { cutoff: firstCutoff.toISOString(), names: earlyLegs.map((l) => byId.get(l.user_id)?.teamName ?? "?") } : null,
+    stake: finalStake,
+    myVenmo: handles.get(me.userId) ?? "",
+  };
+  const copyText = (await slipText(now.season, now.week)).text;
+
   return {
+    place,
+    poke: { missing: frozen ? 0 : missingCount },
+    copyText,
     build: process.env.VERCEL_GIT_COMMIT_SHA ?? process.env.VERCEL_DEPLOYMENT_ID ?? "dev",
     week: now.week,
     season: now.season,
@@ -279,7 +333,15 @@ export async function slipData(me: Member, all: Member[]): Promise<SlipData> {
       ? {
           week: now.week - 1,
           points: Number(funding[0].points),
-          people: funding.map((f) => ({ userId: f.user_id, teamName: byId.get(f.user_id)?.teamName ?? "?", username: byId.get(f.user_id)?.username ?? "", avatar: avatarUrl(byId.get(f.user_id)?.avatar ?? null), state: payState(f) })),
+          people: funding.map((f) => ({
+            userId: f.user_id,
+            teamName: byId.get(f.user_id)?.teamName ?? "?",
+            username: byId.get(f.user_id)?.username ?? "",
+            avatar: avatarUrl(byId.get(f.user_id)?.avatar ?? null),
+            state: payState(f),
+            paidAt: f.paid_at ?? null,
+            canUndo: (f.paid || f.confirmed) && (f.user_id === me.userId || me.isAdmin || bookieOf(f.week) === me.userId),
+          })),
           bookie: (() => {
             const id = bookieOf(now.week - 1);
             return id ? byId.get(id)?.teamName ?? null : null;

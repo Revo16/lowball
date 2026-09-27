@@ -27,7 +27,6 @@ function str(form: FormData, key: string) {
 function refresh() {
   revalidatePath("/");
   revalidatePath("/search");
-  revalidatePath("/bookie");
   revalidatePath("/league");
 }
 
@@ -344,24 +343,34 @@ export async function restoreLeg(token: string): Promise<PickResult> {
 export async function iPaid(week: number) {
   const { me } = await requireMember();
   const now = await seasonNow();
-  // "Says paid" until the bookie (or the admin) taps Got it.
+  // If they say they paid, they paid: no second confirmation. It can be undone.
   await db()
     .from("losers")
-    .update({ paid: true, paid_at: new Date().toISOString() })
+    .update({ paid: true, confirmed: true, paid_at: new Date().toISOString() })
     .match({ season: now.season, week, user_id: me.userId });
   const bookie = (await getParlay(now.season, week + 1))?.placed_by;
   if (bookie && bookie !== me.userId) {
     await pushTo([bookie], {
-      title: `${me.teamName} says they paid you $${config.loserAmount}`,
-      body: `Week ${week} loser. Check Venmo, then tap Got it on the Bookie tab.`,
-      url: "/bookie",
+      title: `${me.teamName} paid you $${config.loserAmount}`,
+      body: `Week ${week} loser, for the Week ${week + 1} parlay. Check your Venmo.`,
+      url: "/",
       tag: `paid-${week}-${me.userId}`,
     }).catch(() => null);
   }
   refresh();
 }
 
-/** The loser pays whoever placed the parlay their $5 funds, so that bookie (or the admin) marks it received. */
+/** Undo a payment: the loser, that week's bookie, or the admin. */
+export async function unpay(week: number, userId: string) {
+  const { me } = await requireMember();
+  const now = await seasonNow();
+  const bookie = (await getParlay(now.season, week + 1))?.placed_by;
+  if (userId !== me.userId && bookie !== me.userId && !me.isAdmin) return;
+  await db().from("losers").update({ paid: false, confirmed: false, paid_at: null }).match({ season: now.season, week, user_id: userId });
+  refresh();
+}
+
+/** Mark paid or unpaid from League (that week's bookie or the admin). */
 export async function confirmPayment(form: FormData) {
   const { me } = await requireMember();
   const now = await seasonNow();
@@ -370,11 +379,7 @@ export async function confirmPayment(form: FormData) {
   if (!me.isAdmin && bookie !== me.userId) return;
   const userId = str(form, "userId");
   const confirmed = str(form, "confirmed") === "true";
-  const patch: Record<string, unknown> = { confirmed };
-  if (confirmed) {
-    patch.paid = true;
-    patch.paid_at = new Date().toISOString();
-  }
+  const patch: Record<string, unknown> = { confirmed, paid: confirmed, paid_at: confirmed ? new Date().toISOString() : null };
   await db().from("losers").update(patch).match({ season: now.season, week, user_id: userId });
   refresh();
 }

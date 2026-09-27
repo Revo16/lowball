@@ -5,6 +5,7 @@ import { ActionForm, Submit } from "@/components/client";
 import { RecordGrid, type RecordWeek } from "@/components/RecordGrid";
 import { confirmPayment, setPoolMember, recomputeLoser, setVenmo } from "@/app/actions";
 import { venmos } from "@/lib/venmos";
+import { oddsStatus } from "@/lib/odds";
 import { seasonWinnings } from "@/lib/winnings";
 import { requireMember } from "@/lib/session";
 import { seasonNow } from "@/lib/season";
@@ -27,6 +28,7 @@ export default async function LeaguePage() {
     getLosers(now.season),
     venmos(admin?.userId).catch(() => new Map<string, string>()),
   ]);
+  const feed = await oddsStatus().catch(() => null);
   const byId = new Map(all.map((m) => [m.userId, m]));
   const byWeek = new Map(parlays.map((p) => [p.week, p]));
 
@@ -161,7 +163,7 @@ export default async function LeaguePage() {
                             <input type="hidden" name="week" value={l.week} />
                             <input type="hidden" name="userId" value={l.user_id} />
                             <input type="hidden" name="confirmed" value={l.confirmed ? "false" : "true"} />
-                            <button className="btn-link" type="submit">{l.confirmed ? "Undo" : "Got it"}</button>
+                            <button className="btn-link" type="submit">{l.confirmed ? "Undo" : "Mark paid"}</button>
                           </form>
                         )}
                       </td>
@@ -173,7 +175,7 @@ export default async function LeaguePage() {
             </div>
           )}
           <p className="fine">
-            Each week&apos;s loser pays whoever placed the next week&apos;s parlay. That bookie taps Got it when the ${config.loserAmount} lands{me.isAdmin ? " (you can too)" : ""}.
+            Each week&apos;s loser pays whoever placed the next week&apos;s parlay and taps I paid on The Slip. That bookie{me.isAdmin ? " or you" : ""} can mark it paid or undo it here.
           </p>
           <details>
             <summary className="small muted">Stat correction or pool change? Re-pull a week</summary>
@@ -190,6 +192,7 @@ export default async function LeaguePage() {
             </p>
           </details>
         </section>
+        <p className="fine center">Game lines: ESPN (DraftKings lines, free). {feed?.text}</p>
       </main>
       <BottomNav current="league" />
     </>
