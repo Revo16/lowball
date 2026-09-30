@@ -138,7 +138,17 @@ export function SlipView({ initial, pushKey }: { initial: SlipData; pushKey: str
     setPoking(false);
     showSnack(r.error ? { text: r.error, error: true } : { text: r.ok ?? "Poked" });
   }
-  async function copySlip() {
+  /** Share icon (top right): the phone's share sheet with the slip, or copy it where that isn't available. */
+  async function shareSlip() {
+    const nav = navigator as Navigator & { share?: (d: { text: string; title?: string }) => Promise<void> };
+    if (typeof nav.share === "function") {
+      try {
+        await nav.share({ title: `Week ${data.week} parlay`, text: data.copyText });
+        return;
+      } catch (err) {
+        if ((err as Error).name === "AbortError") return; // they closed the sheet
+      }
+    }
     try {
       await navigator.clipboard.writeText(data.copyText);
     } catch {
@@ -193,7 +203,16 @@ export function SlipView({ initial, pushKey }: { initial: SlipData; pushKey: str
 
   return (
     <>
-      <AppBar />
+      <AppBar
+        action={
+          <button type="button" className="appbar-btn" onClick={shareSlip} aria-label="Share the slip">
+            <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+              <path d="M12 3 7.5 7.5l1.4 1.4L11 6.8V15h2V6.8l2.1 2.1 1.4-1.4L12 3Z" fill="currentColor" />
+              <path d="M6 10h2v2H6v8h12v-8h-2v-2h2a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2Z" fill="currentColor" />
+            </svg>
+          </button>
+        }
+      />
       <main className="wrap">
         <div className="pill-row">
           <span className="beige-pill">The Slip</span>
@@ -209,15 +228,15 @@ export function SlipView({ initial, pushKey }: { initial: SlipData; pushKey: str
               <span className="board-label">Parlay odds</span>
               <span className="board-big">{formatAmerican(shownOdds)}</span>
               <span className={`board-sub ${oddsMoved ? (oddsBetter ? "good" : "bad") : ""}`}>
-                {totals.final ? "Final" : oddsMoved ? `${formatAmerican(totals.atPick)} at pick` : "Live"}
-                {" · "}
-                <Num value={totals.stake} prefix="$" /> stake
+                {totals.final ? "Final" : oddsMoved ? `${formatAmerican(totals.atPick)} at pick` : "Live estimate"}
               </span>
             </div>
             <span className="vs">vs</span>
             <div className="board-side right">
               {/* What DraftKings pays back if it hits (stake included), and each person's share. */}
-              <span className="board-label">{data.status === "won" ? "Paid" : "Pays"}</span>
+              <span className="board-label">
+                ${Number.isInteger(totals.stake) ? totals.stake : totals.stake.toFixed(2)} {data.status === "won" ? "paid out" : "pays out"}
+              </span>
               <Num className="board-big" value={data.winnings.payout} prefix="$" />
               <span className="board-sub each-good">
                 {data.winnings.perPerson != null ? (
@@ -234,8 +253,14 @@ export function SlipView({ initial, pushKey }: { initial: SlipData; pushKey: str
             <div className="bar-block">
               <div className="bar"><span style={{ width: `${pct}%` }} /></div>
               <div className="bar-meta">
-                <span>Legs in</span>
-                <b>{data.picked}/{data.needed}</b>
+                <span>
+                  {data.poke.missing > 0 ? "Legs" : "Legs in"} <b>{data.picked}/{data.needed}</b>
+                </span>
+                {data.poke.missing > 0 && (
+                  <button type="button" className="poke-chip" onClick={poke} disabled={poking} aria-label={`Poke the ${data.poke.missing} without a leg`}>
+                    <span aria-hidden="true">👉</span> {poking ? "…" : "Poke"}
+                  </button>
+                )}
               </div>
             </div>
             <div className="bar-block">
@@ -343,20 +368,6 @@ export function SlipView({ initial, pushKey }: { initial: SlipData; pushKey: str
             </Link>
           </div>
         )}
-
-        <div className="legs-bar">
-          {data.poke.missing > 0 ? (
-            <button type="button" className="tool poke" onClick={poke} disabled={poking}>
-              <span aria-hidden="true">👉</span> {poking ? "Poking…" : `Poke ${data.poke.missing}`}
-            </button>
-          ) : (
-            <span />
-          )}
-          <button type="button" className="tool copy" onClick={copySlip}>
-            <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path d="M8 3h9a2 2 0 0 1 2 2v11h-2V5H8V3Zm-3 4h9a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2Zm0 2v11h9V9H5Z" fill="currentColor" /></svg>
-            Copy
-          </button>
-        </div>
 
         <ol className="legs">
           {data.rows.map((row) => {

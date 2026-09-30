@@ -80,9 +80,10 @@ export function Countdown({ to }: { to: string }) {
   const m = Math.floor((ms % 3_600_000) / 60_000);
   const s = Math.floor((ms % 60_000) / 1000);
   const pad = (n: number) => String(n).padStart(2, "0");
+  // More than a day out, seconds are noise: "3d 5h". Inside the last day it ticks.
   return (
     <span className="mono" aria-label={`${d} days ${h} hours ${m} minutes left`}>
-      {d > 0 && `${d}d `}{pad(h)}:{pad(m)}:{pad(s)}
+      {d > 0 ? `${d}d ${h}h` : `${pad(h)}:${pad(m)}:${pad(s)}`}
     </span>
   );
 }

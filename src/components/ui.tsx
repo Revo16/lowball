@@ -1,8 +1,8 @@
 import Link from "next/link";
 import { AvatarImg } from "@/components/AvatarImg";
 
-/** Teal top bar with a home button and the league name. */
-export function AppBar({ title = "No Shoes Nation" }: { title?: string }) {
+/** Teal top bar with a home button, the league name, and an optional action on the right. */
+export function AppBar({ title = "No Shoes Nation", action }: { title?: string; action?: React.ReactNode }) {
   return (
     <header className="appbar">
       <div className="appbar-in">
@@ -12,6 +12,7 @@ export function AppBar({ title = "No Shoes Nation" }: { title?: string }) {
           </svg>
         </Link>
         <span className="league-pill">{title}</span>
+        {action && <span className="appbar-action">{action}</span>}
       </div>
     </header>
   );
