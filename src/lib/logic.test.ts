@@ -215,3 +215,48 @@ test("SportsGameOdds: every DraftKings player prop comes through", () => {
   // Two hand-typed bets on one game never clash
   assert.equal(conflictFor({ eventId: "g1", market: "custom", desc: null }, [{ userId: "a", eventId: "g1", market: "custom", desc: null }]), null);
 });
+
+import { gradeLeg, normName, parlayOutcome, type LiveGame, type Box } from "./grade.ts";
+
+test("grading: game lines, props, early certainty, voids", () => {
+  const game = (state: "pre" | "in" | "post", away: number, home: number): LiveGame => ({
+    state, detail: state === "post" ? "Final" : "Q3 8:21",
+    away: { name: "Seattle Seahawks", abbr: "SEA", score: away }, home: { name: "Arizona Cardinals", abbr: "ARI", score: home },
+  });
+  const box = (players: Record<string, Record<string, number>>, firstTd: string | null = null): Box =>
+    ({ players: new Map(Object.entries(players).map(([n, s]) => [normName(n), s])), firstTd: firstTd ? normName(firstTd) : null });
+  const g = (leg: Parameters<typeof gradeLeg>[0], gm: LiveGame | null, b: Box | null = null) => gradeLeg(leg, gm, b);
+
+  // Moneyline / spread / total
+  assert.equal(g({ market: "h2h", outcome_name: "Seattle Seahawks", outcome_desc: null, point: null }, game("in", 17, 14)).trend, "good");
+  assert.equal(g({ market: "h2h", outcome_name: "Seattle Seahawks", outcome_desc: null, point: null }, game("post", 17, 20)).result, "miss");
+  assert.equal(g({ market: "spreads", outcome_name: "Arizona Cardinals", outcome_desc: null, point: 2.5 }, game("post", 20, 18)).result, "hit"); // lost by 2, +2.5 covers
+  assert.equal(g({ market: "spreads", outcome_name: "Seattle Seahawks", outcome_desc: null, point: -3 }, game("post", 20, 17)).result, "push");
+  assert.equal(g({ market: "totals", outcome_name: "Over", outcome_desc: null, point: 44.5 }, game("in", 24, 21)).result, "hit"); // 45 already, early
+  assert.equal(g({ market: "totals", outcome_name: "Under", outcome_desc: null, point: 44.5 }, game("in", 24, 21)).result, "miss");
+  assert.equal(g({ market: "totals", outcome_name: "Under", outcome_desc: null, point: 44.5 }, game("in", 14, 10)).result, null);
+  assert.equal(g({ market: "team_total", outcome_name: "Over", outcome_desc: "Arizona Cardinals", point: 20.5 }, game("post", 30, 21)).result, "hit");
+  assert.equal(g({ market: "h2h", outcome_name: "Seattle Seahawks", outcome_desc: null, point: null }, game("pre", 0, 0)).state, "pre");
+
+  // Props: over clears early, under busts early, finals, voids, anytime TD, first TD
+  const b = box({ "Jaxon Smith-Njigba": { "receiving.receivingYards": 62, "receiving.receptions": 6 }, "Kenneth Walker III": { "rushing.rushingYards": 40, "rushing.rushingTouchdowns": 1, "receiving.receivingYards": 12 } }, "Kenneth Walker");
+  const over = g({ market: "player_reception_yds", outcome_name: "Over", outcome_desc: "Jaxon Smith-Njigba", point: 74.5 }, game("in", 10, 7), b);
+  assert.equal(over.result, null); assert.deepEqual(over.progress, { current: 62, target: 74.5 }); assert.equal(over.text, "62 / 74.5 rec yds · needs 13");
+  assert.equal(g({ market: "player_receiving_receptions", outcome_name: "Over", outcome_desc: "Jaxon Smith-Njigba", point: 5.5 }, game("in", 10, 7), b).result, "hit");
+  assert.equal(g({ market: "player_receiving_receptions", outcome_name: "Under", outcome_desc: "Jaxon Smith-Njigba", point: 5.5 }, game("in", 10, 7), b).result, "miss");
+  assert.equal(g({ market: "player_reception_yds", outcome_name: "Over", outcome_desc: "Jaxon Smith-Njigba", point: 74.5 }, game("post", 10, 7), b).result, "miss");
+  assert.equal(g({ market: "player_rushing_receiving_yards", outcome_name: "Over", outcome_desc: "Kenneth Walker III", point: 50.5 }, game("in", 10, 7), b).result, "hit"); // 52
+  assert.equal(g({ market: "player_anytime_td", outcome_name: "Yes", outcome_desc: "Kenneth Walker III", point: null }, game("in", 10, 7), b).result, "hit");
+  assert.equal(g({ market: "player_anytime_td", outcome_name: "Yes", outcome_desc: "Jaxon Smith-Njigba", point: null }, game("post", 10, 7), b).result, "miss");
+  assert.equal(g({ market: "player_firstTouchdown", outcome_name: "Yes", outcome_desc: "Kenneth Walker III", point: null }, game("in", 10, 7), b).result, "hit");
+  assert.equal(g({ market: "player_pass_yds", outcome_name: "Over", outcome_desc: "Sam Darnold", point: 230.5 }, game("post", 10, 7), b).result, "push"); // didn't play: void
+  assert.equal(g({ market: "player_pass_yds", outcome_name: "Over", outcome_desc: "Sam Darnold", point: 230.5 }, game("in", 10, 7), b).text, "No stats yet");
+  assert.equal(g({ market: "custom", outcome_name: null, outcome_desc: null, point: null }, game("post", 10, 7), b).manual, true);
+  assert.equal(normName("D.J. Moore"), normName("DJ Moore"));
+
+  // Parlay
+  assert.equal(parlayOutcome(["hit", null, "miss"]), "lost");
+  assert.equal(parlayOutcome(["hit", null]), null);
+  assert.equal(parlayOutcome(["hit", "push", "hit"]), "won");
+  assert.equal(parlayOutcome(["push"]), "void");
+});

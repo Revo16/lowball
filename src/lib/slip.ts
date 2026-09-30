@@ -10,6 +10,7 @@ import { gameOdds, propSlate, dkMarkets, currentPrice, dkParlayLink, isPropMarke
 import { venmoPayLink } from "./venmo";
 import { venmos } from "./venmos";
 import { canEditLeg, cutoffFor, isEarly } from "./legrules";
+import { weekGrades, settleWeek } from "./settle";
 
 // Everything The Slip page shows, as plain JSON. The page renders it once on
 // the server and then re-fetches it every 30 seconds.
@@ -29,6 +30,19 @@ export type SlipLeg = {
   enteredBy: string | null;
   /** Early game: when it comes off the slip if the parlay isn't placed. */
   dropsAt: string | null;
+  /** Once it's placed and the game starts: where the leg stands, and hit/miss once decided. */
+  live: {
+    state: "pre" | "in" | "post";
+    result: "hit" | "miss" | "push" | null;
+    trend: "good" | "bad" | null;
+    text: string;
+    progress: { current: number; target: number } | null;
+    score: string | null; // "SEA 17 – 14 ARI"
+    clock: string | null; // "Q3 8:21", "Final"
+    manual: boolean;
+    markedBy: "auto" | "hand";
+    legId: string;
+  } | null;
 };
 
 export type SlipRow = {
@@ -116,6 +130,10 @@ export type SlipData = {
     stake: number;
     myVenmo: string;
   };
+  /** Once games start on a placed slip: how many legs hit, missed, are live. */
+  tally: { hit: number; miss: number; push: number; total: number } | null;
+  /** The week's bookie or the admin can mark legs the app can't grade. */
+  canGrade: boolean;
   /** Poke: how many pool members still have no leg. */
   poke: { missing: number };
   /** The plain-text slip for the Copy button. */
@@ -166,7 +184,7 @@ async function livePrices(legs: Leg[], w: OddsWindow) {
 export async function slipData(me: Member, all: Member[]): Promise<SlipData> {
   await sweepEarlyLegs().catch(() => null);
   const now = await seasonNow();
-  const [legs, losers, parlay, parlays, pickers, stake] = await Promise.all([
+  const [legs, losers, parlayRow, parlays, pickers, stake] = await Promise.all([
     getLegs(now.season, now.week),
     getLosers(now.season),
     getParlay(now.season, now.week),
@@ -175,6 +193,17 @@ export async function slipData(me: Member, all: Member[]): Promise<SlipData> {
     stakeFor(now.season, now.week),
   ]);
   const byId = new Map(all.map((m) => [m.userId, m]));
+  let parlay = parlayRow;
+
+  // Placed: grade every leg against the live games, and settle the parlay the
+  // moment it's decided (lost on the first miss, won when every leg hits).
+  const placedish = !!parlay && parlay.status !== "open";
+  const grades = placedish && legs.length ? await weekGrades(now.season, now.week, legs).catch(() => null) : null;
+  if (grades && parlay?.status === "placed") {
+    const settled = await settleWeek(now.season, now.week, { legs, grades, parlay }).catch(() => null);
+    if (settled) parlay = { ...parlay, status: settled.outcome, payout: settled.payout };
+  }
+
   const status: SlipData["status"] =
     parlay?.status && parlay.status !== "open" ? parlay.status : now.locked ? "locked" : "open";
   const frozen = status === "placed" || status === "won" || status === "lost" || status === "void";
@@ -198,6 +227,23 @@ export async function slipData(me: Member, all: Member[]): Promise<SlipData> {
       movedPoint: null as number | null,
       enteredBy: l.entered_by ? byId.get(l.entered_by)?.teamName ?? "someone" : null,
       dropsAt: !frozen && isEarly(l.commence_time, now.lock) ? cutoffFor(l.commence_time!).toISOString() : null,
+      live: (() => {
+        const g = grades?.get(l.id);
+        if (!g || (g.state === "pre" && !g.result)) return null;
+        const gm = g.game;
+        return {
+          state: g.state,
+          result: g.result,
+          trend: g.trend,
+          text: g.markedBy === "hand" && g.manual ? "" : g.text,
+          progress: g.progress,
+          score: gm ? `${gm.away.abbr} ${gm.away.score} – ${gm.home.score} ${gm.home.abbr}` : null,
+          clock: gm ? (gm.state === "post" ? "Final" : gm.detail) : null,
+          manual: g.manual && g.markedBy !== "hand",
+          markedBy: g.markedBy,
+          legId: l.id,
+        };
+      })(),
     };
     if (l.market === "custom" || !l.event_id) return { ...base, status: "custom" };
     if (frozen) return { ...base, status: "frozen" };
@@ -307,8 +353,21 @@ export async function slipData(me: Member, all: Member[]): Promise<SlipData> {
   };
   const copyText = (await slipText(now.season, now.week)).text;
 
+  const results = grades ? legs.map((l) => grades.get(l.id)) : [];
+  const started = results.some((g) => g && (g.state !== "pre" || g.result));
+  const tally = grades && started
+    ? {
+        hit: results.filter((g) => g?.result === "hit").length,
+        miss: results.filter((g) => g?.result === "miss").length,
+        push: results.filter((g) => g?.result === "push").length,
+        total: legs.length,
+      }
+    : null;
+
   return {
     place,
+    tally,
+    canGrade: me.isAdmin || (!!parlay?.placed_by && parlay.placed_by === me.userId),
     poke: { missing: frozen ? 0 : missingCount },
     copyText,
     build: process.env.VERCEL_GIT_COMMIT_SHA ?? process.env.VERCEL_DEPLOYMENT_ID ?? "dev",

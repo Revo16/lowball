@@ -7,6 +7,7 @@ import { confirmPayment, setPoolMember, recomputeLoser, setVenmo } from "@/app/a
 import { venmos } from "@/lib/venmos";
 import { oddsStatus } from "@/lib/odds";
 import { seasonWinnings } from "@/lib/winnings";
+import { settleWeek } from "@/lib/settle";
 import { requireMember } from "@/lib/session";
 import { seasonNow } from "@/lib/season";
 import { getLosers, getParlays } from "@/lib/db";
@@ -23,6 +24,9 @@ export default async function LeaguePage() {
   const { me, all } = await requireMember();
   const now = await seasonNow();
   const admin = all.find((m) => m.isAdmin);
+  // Catch up any placed parlay whose games are over (e.g. nobody had The Slip open on Monday night).
+  const open = (await getParlays(now.season)).filter((p) => p.status === "placed" && p.week < now.week);
+  await Promise.all(open.map((p) => settleWeek(now.season, p.week).catch(() => null)));
   const [parlays, losers, handles] = await Promise.all([
     getParlays(now.season),
     getLosers(now.season),

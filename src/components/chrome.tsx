@@ -8,7 +8,7 @@ export function StatusChip({ status }: { status: string }) {
     lost: "Missed",
     void: "Void",
   };
-  const tone: Record<string, string> = { "open-plain": "grey", open: "green", locked: "red", placed: "blue", won: "green", lost: "grey", void: "grey" };
+  const tone: Record<string, string> = { "open-plain": "grey", open: "green", locked: "red", placed: "blue", won: "green", lost: "red", void: "grey" };
   return <span className={`pill pill-${tone[status] ?? "grey"}`}>{label[status] ?? status}</span>;
 }
 

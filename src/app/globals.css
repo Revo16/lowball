@@ -882,3 +882,45 @@ details.record-row > summary { cursor: pointer; }
 .poke-chip:disabled { opacity: 0.6; }
 .bar-meta > span { white-space: nowrap; }
 .bar-meta > span b { margin-left: 3px; }
+
+/* ---------- Live tracking once it's placed ---------- */
+/* The slot chip becomes the verdict */
+.leg .slot.slot-hit { background: var(--green); color: #fff; }
+.leg .slot.slot-miss { background: var(--red); color: #fff; }
+.leg .slot.slot-push { background: #9aa0a8; color: #fff; }
+.leg.leg-hit { box-shadow: inset 4px 0 0 var(--green), var(--shadow); }
+.leg.leg-miss { box-shadow: inset 4px 0 0 var(--red), var(--shadow); }
+.leg.leg-miss .sel { text-decoration: line-through; text-decoration-color: rgb(224 55 61 / 0.6); }
+.leg.leg-miss .avatar, .leg.leg-miss .leg-price { opacity: 0.6; }
+
+.live-strip { display: grid; gap: 6px; padding: 8px 12px 10px; background: var(--card-2); font-size: 12.5px; color: #4b5159; }
+.live-top { display: flex; justify-content: space-between; align-items: center; gap: 10px; font-weight: 700; }
+.live-score { font-variant-numeric: tabular-nums; letter-spacing: 0.02em; }
+.live-clock { display: inline-flex; align-items: center; gap: 5px; color: var(--muted); font-weight: 700; white-space: nowrap; }
+.live-clock.on { color: var(--red); }
+.live-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--red); animation: live-pulse 1.4s ease-in-out infinite; }
+@keyframes live-pulse { 50% { opacity: 0.25; } }
+.live-progress { display: grid; gap: 4px; }
+.live-bar { height: 6px; border-radius: 3px; background: #dcdad4; overflow: hidden; }
+.live-bar span { display: block; height: 100%; border-radius: 3px; background: var(--teal); transition: width 0.6s ease; }
+.live-text { font-weight: 700; color: var(--ink); }
+.tone-good .live-bar span { background: var(--green); }
+.tone-bad .live-bar span { background: var(--red); }
+.tone-good .live-text { color: var(--green-2); }
+.tone-bad .live-text { color: var(--red); }
+.tone-push .live-text { color: var(--muted); }
+.live-mark { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 12px; color: var(--muted); }
+.mark { border: 0; border-radius: 999px; padding: 4px 12px; font: inherit; font-size: 12px; font-weight: 800; cursor: pointer; background: var(--beige); color: #3f444b; }
+.mark.hit { background: var(--green); color: #fff; }
+.mark.miss { background: var(--red); color: #fff; }
+
+/* Top card once games start: green = hit, grey = push, red = missed */
+.bar-tally { display: flex; background: #e7e5e0; }
+.bar-tally span { display: block; height: 100%; }
+.bar-tally .t-hit { background: var(--green); }
+.bar-tally .t-push { background: #b6bbc2; }
+.bar-tally .t-miss { background: var(--red); }
+.tally-miss { color: var(--red); font-weight: 700; }
+@media (prefers-reduced-motion: reduce) { .live-dot { animation: none; } .live-bar span { transition: none; } }
+.bar-tally span { border-radius: 0; transition: width 0.4s ease; }
+.board-big.struck { text-decoration: line-through; text-decoration-thickness: 3px; text-decoration-color: rgb(224 55 61 / 0.7); color: var(--muted); }

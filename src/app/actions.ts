@@ -17,6 +17,7 @@ import { notify } from "@/lib/notify";
 import { canEditLeg, editBlockedReason, isPickable, CUTOFF_MIN } from "@/lib/legrules";
 import { sweepEarlyLegs } from "@/lib/sweep";
 import { saveVenmo, cleanHandle } from "@/lib/venmos";
+import { saveManualGrade, settleWeek } from "@/lib/settle";
 
 export type FormState = { error?: string; ok?: string };
 
@@ -382,6 +383,28 @@ export async function confirmPayment(form: FormData) {
   const patch: Record<string, unknown> = { confirmed, paid: confirmed, paid_at: confirmed ? new Date().toISOString() : null };
   await db().from("losers").update(patch).match({ season: now.season, week, user_id: userId });
   refresh();
+}
+
+/* ---------- grading legs by hand ---------- */
+
+/**
+ * Hit / Miss / clear on a leg the app can't grade (typed-in bets, stats ESPN
+ * doesn't carry), or to correct one. The week's bookie or the admin.
+ */
+export async function markLeg(legId: string, result: "hit" | "miss" | "push" | null): Promise<PickResult> {
+  try {
+    const { me } = await requireMember();
+    const now = await seasonNow();
+    const parlay = await getParlay(now.season, now.week);
+    if (!me.isAdmin && parlay?.placed_by !== me.userId) return { error: "Only this week's bookie or the admin can mark legs." };
+    if (!(await getLegs(now.season, now.week)).some((l) => l.id === legId)) return { error: "That leg isn't on this week's slip." };
+    await saveManualGrade(now.season, now.week, legId, result);
+    await settleWeek(now.season, now.week).catch(() => null);
+    refresh();
+    return { ok: result ? `Marked ${result}` : "Cleared" };
+  } catch (err) {
+    return { error: (err as Error).message };
+  }
 }
 
 /* ---------- Venmo ---------- */

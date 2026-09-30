@@ -6,7 +6,7 @@ import { Countdown } from "@/components/client";
 import { StatusChip, PayChip } from "@/components/chrome";
 import { AppBar, Avatar, Hex, LockIcon, Num } from "@/components/ui";
 import { PushToggle } from "@/components/PushToggle";
-import { iPaid, signOut, removeLeg, restoreLeg, unpay, nudge } from "@/app/actions";
+import { iPaid, signOut, removeLeg, restoreLeg, unpay, nudge, markLeg } from "@/app/actions";
 import { DkSheet, PlaceSheet } from "@/components/Sheets";
 import { SwipeTap } from "@/components/SwipeTap";
 import { useRouter } from "next/navigation";
@@ -179,6 +179,13 @@ export function SlipView({ initial, pushKey }: { initial: SlipData; pushKey: str
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  /** Bookie/admin marks a leg the app can't grade. */
+  async function markLive(legId: string, result: "hit" | "miss" | null) {
+    const r = await markLeg(legId, result);
+    await load();
+    showSnack(r.error ? { text: r.error, error: true } : { text: r.ok ?? "Saved" });
+  }
+
   useEffect(() => {
     const tick = () => {
       if (document.visibilityState === "visible") load();
@@ -235,10 +242,11 @@ export function SlipView({ initial, pushKey }: { initial: SlipData; pushKey: str
             <div className="board-side right">
               {/* What DraftKings pays back if it hits (stake included), and each person's share. */}
               <span className="board-label">
-                ${Number.isInteger(totals.stake) ? totals.stake : totals.stake.toFixed(2)} {data.status === "won" ? "paid out" : "pays out"}
+                ${Number.isInteger(totals.stake) ? totals.stake : totals.stake.toFixed(2)}{" "}
+                {data.status === "won" ? "paid out" : data.status === "lost" ? "would've paid" : "pays out"}
               </span>
-              <Num className="board-big" value={data.winnings.payout} prefix="$" />
-              <span className="board-sub each-good">
+              <Num className={`board-big ${data.status === "lost" ? "struck" : ""}`} value={data.winnings.payout} prefix="$" />
+              <span className={`board-sub ${data.status === "lost" ? "" : "each-good"}`}>
                 {data.winnings.perPerson != null ? (
                   <>
                     <Num value={data.winnings.perPerson} prefix="$" /> each
@@ -251,11 +259,26 @@ export function SlipView({ initial, pushKey }: { initial: SlipData; pushKey: str
           </div>
           <div className="board-bars">
             <div className="bar-block">
-              <div className="bar"><span style={{ width: `${pct}%` }} /></div>
+              {data.tally ? (
+                <div className="bar bar-tally" aria-hidden="true">
+                  <span className="t-hit" style={{ width: `${(data.tally.hit / data.tally.total) * 100}%` }} />
+                  <span className="t-push" style={{ width: `${(data.tally.push / data.tally.total) * 100}%` }} />
+                  <span className="t-miss" style={{ width: `${(data.tally.miss / data.tally.total) * 100}%` }} />
+                </div>
+              ) : (
+                <div className="bar"><span style={{ width: `${pct}%` }} /></div>
+              )}
               <div className="bar-meta">
-                <span>
-                  {data.poke.missing > 0 ? "Legs" : "Legs in"} <b>{data.picked}/{data.needed}</b>
-                </span>
+                {data.tally ? (
+                  <span>
+                    Hit <b>{data.tally.hit}/{data.tally.total - data.tally.push}</b>
+                    {data.tally.miss > 0 && <span className="tally-miss"> · {data.tally.miss} missed</span>}
+                  </span>
+                ) : (
+                  <span>
+                    {data.poke.missing > 0 ? "Legs" : "Legs in"} <b>{data.picked}/{data.needed}</b>
+                  </span>
+                )}
                 {data.poke.missing > 0 && (
                   <button type="button" className="poke-chip" onClick={poke} disabled={poking} aria-label={`Poke the ${data.poke.missing} without a leg`}>
                     <span aria-hidden="true">👉</span> {poking ? "…" : "Poke"}
@@ -377,7 +400,7 @@ export function SlipView({ initial, pushKey }: { initial: SlipData; pushKey: str
             return (
               <SwipeTap
                 key={`${row.userId}:${leg ? "leg" : "empty"}`}
-                className={["leg", row.isMe ? "mine" : "", leg ? "" : "empty", f ? `flash-${f}` : ""].join(" ")}
+                className={["leg", row.isMe ? "mine" : "", leg ? "" : "empty", f ? `flash-${f}` : "", leg?.live?.result ? `leg-${leg.live.result}` : ""].join(" ")}
                 canTap={leg ? row.canEdit : row.canAdd}
                 canSwipe={!!leg && row.canEdit}
                 peek={peekFor === row.userId}
@@ -386,7 +409,9 @@ export function SlipView({ initial, pushKey }: { initial: SlipData; pushKey: str
                 label={leg ? `Change ${row.isMe ? "your" : `${row.teamName}'s`} leg` : `Add a pick for ${row.isMe ? "yourself" : row.teamName}`}
               >
                 <div className="leg-row">
-                  <span className="slot">{leg ? slotCode(leg.market) : "—"}</span>
+                  <span className={`slot ${leg?.live?.result ? `slot-${leg.live.result}` : ""}`}>
+                    {leg?.live?.result === "hit" ? "HIT" : leg?.live?.result === "miss" ? "MISS" : leg?.live?.result === "push" ? "PUSH" : leg ? slotCode(leg.market) : "—"}
+                  </span>
                   <Avatar src={row.avatar} name={row.teamName} size={42} />
                   <div className="leg-main">
                     {leg ? (
@@ -424,7 +449,9 @@ export function SlipView({ initial, pushKey }: { initial: SlipData; pushKey: str
                     )}
                   </div>
                 </div>
-                {leg && (
+                {leg && leg.live ? (
+                  <LiveStrip live={leg.live} canGrade={data.canGrade} onMark={markLive} />
+                ) : leg ? (
                   <div className="leg-strip">
                     <span>
                       {leg.market === "custom" ? leg.game : shortGame(leg.game)}
@@ -446,7 +473,7 @@ export function SlipView({ initial, pushKey }: { initial: SlipData; pushKey: str
                       <span className="pill pill-grey">By hand</span>
                     ) : null}
                   </div>
-                )}
+                ) : null}
               </SwipeTap>
             );
           })}
@@ -582,6 +609,62 @@ function BookieStrip({
             {!place!.ready && <small>{place!.legs}/{place!.needed}</small>}
           </button>
         ))}
+    </div>
+  );
+}
+
+/**
+ * Once a placed leg's game starts: the score and clock, where the leg stands
+ * ("62 / 74.5 rec yds · needs 13") with a bar, and HIT / MISS once decided.
+ * Legs the app can't grade get Hit / Miss buttons for the bookie or admin.
+ */
+function LiveStrip({
+  live,
+  canGrade,
+  onMark,
+}: {
+  live: NonNullable<SlipLeg["live"]>;
+  canGrade: boolean;
+  onMark: (legId: string, result: "hit" | "miss" | null) => void;
+}) {
+  const pct = live.progress ? Math.max(0, Math.min(100, (live.progress.current / Math.max(live.progress.target, 0.0001)) * 100)) : null;
+  const tone = live.result === "hit" ? "good" : live.result === "miss" ? "bad" : live.result === "push" ? "push" : live.trend ?? "neutral";
+  return (
+    <div className={`live-strip tone-${tone}`}>
+      <div className="live-top">
+        <span className="live-score">{live.score ?? ""}</span>
+        <span className={`live-clock ${live.state === "in" ? "on" : ""}`}>
+          {live.state === "in" && <span className="live-dot" aria-hidden="true" />}
+          {live.clock}
+        </span>
+      </div>
+      {(live.text || pct != null) && (
+        <div className="live-progress">
+          {pct != null && (
+            <div className="live-bar" aria-hidden="true">
+              <span style={{ width: `${pct}%` }} />
+            </div>
+          )}
+          {live.text && <span className="live-text">{live.text}</span>}
+        </div>
+      )}
+      {live.manual && !live.result && (
+        canGrade ? (
+          <div className="live-mark">
+            <span>Can&apos;t track this one automatically:</span>
+            <button type="button" className="mark hit" onClick={() => onMark(live.legId, "hit")}>Hit</button>
+            <button type="button" className="mark miss" onClick={() => onMark(live.legId, "miss")}>Miss</button>
+          </div>
+        ) : (
+          <div className="live-mark"><span>Tracked by hand: the bookie marks it.</span></div>
+        )
+      )}
+      {live.markedBy === "hand" && live.result && canGrade && (
+        <div className="live-mark">
+          <span>Marked by hand</span>
+          <button type="button" className="mark" onClick={() => onMark(live.legId, null)}>Undo</button>
+        </div>
+      )}
     </div>
   );
 }

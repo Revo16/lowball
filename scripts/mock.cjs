@@ -23,12 +23,14 @@ const week3 = [12.4, 20.1, 8.8, 15, 30.2, 9.9, 0, 11, 14.3, 22, 5.6, 18];
 let gameCalls = 0;
 const propCalls = {};
 const G = (id, t, away, home, sp, ml, tot) => ({ id, t, away, home, sp, ml, tot });
+// Kickoffs relative to now, so the mock always has upcoming games to pick.
+const at = (hours) => new Date(Math.ceil((Date.now() + hours * 3600000) / 60000) * 60000).toISOString().replace(".000Z", "Z");
 const GAMES = [
-  G("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "2026-09-27T20:05:00Z", "Seattle Seahawks", "Arizona Cardinals", [-2.5, -110, -110], [-142, 120], [44.5, -108, -112]),
-  G("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "2026-09-27T20:25:00Z", "Buffalo Bills", "Kansas City Chiefs", [1.5, -115, -105], [105, -125], [51.5, -110, -110]),
-  G("cccccccccccccccccccccccccccccccc", "2026-09-27T17:00:00Z", "Detroit Lions", "Green Bay Packers", [-3, -108, -112], [-155, 130], [48.5, -105, -115]),
-  G("dddddddddddddddddddddddddddddddd", "2026-09-28T00:20:00Z", "Philadelphia Eagles", "Dallas Cowboys", [-4.5, -110, -110], [-205, 170], [46.5, -112, -108]),
-  G("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", "2026-09-29T00:15:00Z", "Cincinnati Bengals", "Baltimore Ravens", [3, -105, -115], [135, -160], [49.5, -110, -110]),
+  G("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", at(72), "Seattle Seahawks", "Arizona Cardinals", [-2.5, -110, -110], [-142, 120], [44.5, -108, -112]),
+  G("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", at(72.3), "Buffalo Bills", "Kansas City Chiefs", [1.5, -115, -105], [105, -125], [51.5, -110, -110]),
+  G("cccccccccccccccccccccccccccccccc", at(69), "Detroit Lions", "Green Bay Packers", [-3, -108, -112], [-155, 130], [48.5, -105, -115]),
+  G("dddddddddddddddddddddddddddddddd", at(76), "Philadelphia Eagles", "Dallas Cowboys", [-4.5, -110, -110], [-205, 170], [46.5, -112, -108]),
+  G("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", at(100), "Cincinnati Bengals", "Baltimore Ravens", [3, -105, -115], [135, -160], [49.5, -110, -110]),
   // An "early" game (think Thursday night) kicking off MOCK_EARLY_MIN minutes
   // after the server starts, so the 15-minute cutoff and drop can be tested.
   G("ffffffffffffffffffffffffffffffff", new Date(Math.ceil((Date.now() + Number(process.env.MOCK_EARLY_MIN || 90) * 60000) / 60000) * 60000).toISOString().replace(".000Z", "Z"), "Pittsburgh Steelers", "Cleveland Browns", [-1.5, -110, -110], [-120, 100], [38.5, -110, -110]),
@@ -78,6 +80,51 @@ function propsEvent(id, wanted) {
   };
 }
 
+
+// ---- Live games ----
+// Touch the file named in MOCK_LIVE_FILE and games go live: Seahawks @ Cardinals
+// in the 3rd quarter, Bills @ Chiefs and Lions @ Packers final, the rest not started.
+const liveOn = () => !!process.env.MOCK_LIVE_FILE && require("fs").existsSync(process.env.MOCK_LIVE_FILE);
+const LIVE = {
+  aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa: { state: "in", detail: "Q3 8:21", away: 17, home: 14 },
+  bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb: { state: "post", detail: "Final", away: 27, home: 24 },
+  cccccccccccccccccccccccccccccccc: { state: "post", detail: "Final", away: 20, home: 23 },
+};
+function withLive(ev, i) {
+  const g = GAMES[i]; const L = liveOn() ? LIVE[g.id] : null;
+  const st = L ?? { state: "pre", detail: "Sun 1:00 PM", away: 0, home: 0 };
+  ev.status = { type: { state: st.state, completed: st.state === "post", detail: st.detail, shortDetail: st.detail } };
+  for (const c of ev.competitions[0].competitors) {
+    c.score = String(c.homeAway === "home" ? st.home : st.away);
+    c.team.abbreviation = c.team.displayName.split(" ").slice(-1)[0].slice(0, 3).toUpperCase();
+  }
+  return ev;
+}
+// Box score: players alternate between clearing their line and falling short;
+// live games are ~60% of the way there.
+function espnSummary(id) {
+  const i = Number(id) - 401872900; const g = GAMES[i];
+  const L = g && liveOn() ? LIVE[g.id] : null;
+  if (!g || !L) return { boxscore: { players: [] }, scoringPlays: [] };
+  const groups = { passing: [], rushing: [], receiving: [] };
+  (PLAYERS[g.id] ?? []).forEach(([name, kind, line], j) => {
+    const target = j % 2 === 0 ? line + 15 : Math.max(0, line - 20);
+    const yds = Math.round(L.state === "in" ? target * 0.6 : target);
+    const td = j % 2 === 0 && L.state === "post" ? 1 : 0;
+    const athlete = { displayName: name };
+    if (kind === "pass") groups.passing.push({ athlete, stats: [`${Math.round(yds / 12)}/${Math.round(yds / 8)}`, String(yds), "7.1", String(td), "0", "1-6", "60.1", "95.0"] });
+    if (kind === "rush") groups.rushing.push({ athlete, stats: [String(Math.round(yds / 4.5)), String(yds), "4.5", String(td), "22"] });
+    if (kind === "rec") groups.receiving.push({ athlete, stats: [String(Math.round(yds / 12) + (j % 2 === 0 ? 3 : 0)), String(yds), "12.0", String(td), "31", "8"] });
+  });
+  const statistics = [
+    { name: "passing", keys: ["completions/passingAttempts", "passingYards", "yardsPerPassAttempt", "passingTouchdowns", "interceptions", "sacks-sackYardsLost", "adjQBR", "QBRating"], athletes: groups.passing },
+    { name: "rushing", keys: ["rushingAttempts", "rushingYards", "yardsPerRushAttempt", "rushingTouchdowns", "longRushing"], athletes: groups.rushing },
+    { name: "receiving", keys: ["receptions", "receivingYards", "yardsPerReception", "receivingTouchdowns", "longReception", "receivingTargets"], athletes: groups.receiving },
+  ];
+  const first = (PLAYERS[g.id] ?? []).find(([, kind], j) => j % 2 === 0 && kind !== "pass");
+  const scoringPlays = L.state === "post" && first ? [{ type: { text: "Rushing Touchdown", abbreviation: "TD" }, scoringType: { abbreviation: "TD", name: "touchdown" }, text: `${first[0]} 12 Yd Run (Kick)` }] : [];
+  return { boxscore: { players: [{ team: { displayName: g.home }, statistics }] }, scoringPlays };
+}
 
 // ---- ESPN scoreboard (shape copied from a real response) ----
 let espnCalls = 0;
@@ -250,8 +297,9 @@ globalThis.fetch = async (input, init) => {
     }
   }
   if (url.hostname === "site.api.espn.com") {
+    if (url.pathname.endsWith("/summary")) return json(espnSummary(url.searchParams.get("event")));
     espnCalls++;
-    return json({ events: GAMES.map(espnEvent) });
+    return json({ events: GAMES.map(espnEvent).map(withLive) });
   }
   if (url.hostname === "api.sportsgameodds.com") {
     if (init?.headers?.["X-Api-Key"] == null && !(new Headers(init?.headers).get("x-api-key"))) return json({ success: false, error: "no key" }, 401);
